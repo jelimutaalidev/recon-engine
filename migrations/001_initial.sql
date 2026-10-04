@@ -205,6 +205,8 @@ CREATE TABLE hypothesis_basis (
   PRIMARY KEY (hypothesis_id, position)
 );
 
+CREATE INDEX idx_hypothesis_basis_target ON hypothesis_basis(target_id);
+
 CREATE TABLE hypothesis_entities (
   hypothesis_id TEXT NOT NULL REFERENCES hypotheses(id),
   entity_id TEXT NOT NULL,
@@ -239,6 +241,9 @@ CREATE TABLE evidence_contradicts (
   position INTEGER NOT NULL,
   PRIMARY KEY (evidence_id, position)
 );
+
+CREATE INDEX idx_evidence_supports_target ON evidence_supports(target_id);
+CREATE INDEX idx_evidence_contradicts_target ON evidence_contradicts(target_id);
 
 CREATE TABLE evidence_provenance (
   evidence_id TEXT NOT NULL REFERENCES evidence(id),

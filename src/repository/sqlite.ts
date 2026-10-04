@@ -66,6 +66,48 @@ import {
 
 type Row = Record<string, unknown>;
 
+const UPSTREAM_SQL = `
+WITH RECURSIVE up(id, hop) AS (
+  SELECT :root, 0
+  UNION
+  SELECT hb.target_id, up.hop + 1
+  FROM hypothesis_basis hb JOIN up ON hb.hypothesis_id = up.id
+  WHERE up.hop < :max
+  UNION
+  SELECT ab.observation_id, up.hop + 1
+  FROM assumption_basis ab JOIN up ON ab.assumption_id = up.id
+  WHERE up.hop < :max
+  UNION
+  SELECT ob.fact_id, up.hop + 1
+  FROM observation_basis ob JOIN up ON ob.observation_id = up.id
+  WHERE up.hop < :max
+)
+SELECT id FROM up GROUP BY id ORDER BY MIN(hop), id
+`;
+
+const DOWNSTREAM_SQL = `
+WITH RECURSIVE down(id, hop) AS (
+  SELECT :root, 0
+  UNION
+  SELECT ob.observation_id, down.hop + 1
+  FROM observation_basis ob JOIN down ON ob.fact_id = down.id
+  WHERE down.hop < :max
+  UNION
+  SELECT ab.assumption_id, down.hop + 1
+  FROM assumption_basis ab JOIN down ON ab.observation_id = down.id
+  WHERE down.hop < :max
+  UNION
+  SELECT hb.hypothesis_id, down.hop + 1
+  FROM hypothesis_basis hb JOIN down ON hb.target_id = down.id
+  WHERE down.hop < :max
+)
+SELECT id FROM down GROUP BY id ORDER BY MIN(hop), id
+`;
+
+function normalizeDepth(maxDepth: number): number {
+  return Math.max(0, Math.trunc(maxDepth));
+}
+
 function stripVolatile(entity: object): Record<string, unknown> {
   const { created_at: _created, updated_at: _updated, ...rest } =
     entity as Record<string, unknown>;
@@ -415,6 +457,36 @@ export class SqliteReconRepository implements ReconRepository {
     );
     const provenance = this.hydrateProvenance('evidence_provenance', 'evidence_id', row.id);
     return rowToEvidence(row, supports, contradicts, provenance);
+  }
+
+  getUpstreamReasoning(id: string, maxDepth = 5): string[] {
+    const rows = this.db.prepare(UPSTREAM_SQL).all({
+      root: id,
+      max: normalizeDepth(maxDepth),
+    }) as { id: string }[];
+    return rows.map((row) => row.id);
+  }
+
+  getDownstreamReasoning(id: string, maxDepth = 5): string[] {
+    const rows = this.db.prepare(DOWNSTREAM_SQL).all({
+      root: id,
+      max: normalizeDepth(maxDepth),
+    }) as { id: string }[];
+    return rows.map((row) => row.id);
+  }
+
+  getEvidenceChain(id: string, maxDepth = 5): string[] {
+    const chain = this.getUpstreamReasoning(id, maxDepth);
+    const placeholders = chain.map(() => '?').join(', ');
+    const rows = this.db
+      .prepare(
+        `SELECT evidence_id FROM evidence_supports WHERE target_id IN (${placeholders})
+         UNION
+         SELECT evidence_id FROM evidence_contradicts WHERE target_id IN (${placeholders})`,
+      )
+      .all(...chain, ...chain) as { evidence_id: string }[];
+    const evidenceIds = rows.map((row) => row.evidence_id).sort();
+    return [...chain, ...evidenceIds];
   }
 
   saveState(state: ReconState): void {

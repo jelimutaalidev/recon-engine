@@ -57,6 +57,10 @@ export interface ReconRepository {
   createEvidence(evidence: Evidence): Evidence;
   getEvidence(id: string): Evidence | null;
 
+  getUpstreamReasoning(id: string, maxDepth?: number): string[];
+  getDownstreamReasoning(id: string, maxDepth?: number): string[];
+  getEvidenceChain(id: string, maxDepth?: number): string[];
+
   saveState(state: ReconState): void;
   loadState(): ReconState | null;
 }
