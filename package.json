@@ -1,0 +1,26 @@
+{
+  "name": "recon-engine",
+  "version": "0.1.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "private": "true",
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.6.4",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}
