@@ -15,6 +15,7 @@ import { observationContentId } from '../epistemic/observation.js';
 import { assumptionContentId } from '../epistemic/assumption.js';
 import { hypothesisContentId } from '../epistemic/hypothesis.js';
 import { evidenceContentId } from '../epistemic/evidence.js';
+import { assertNonEmptyBasis } from '../epistemic/shared.js';
 import type { Provenance } from '../epistemic/provenance.js';
 import type { ConfidenceLevel } from '../epistemic/confidence.js';
 import {
@@ -164,6 +165,47 @@ function assertEpistemicConfidence(state: ReconState): void {
   }
 }
 
+function assertEpistemicRules(state: ReconState): void {
+  for (const fact of state.facts) {
+    if (fact.provenance.length === 0) {
+      throw new ReconError('MissingProvenance', 'Fact requires at least one provenance record', {
+        entity: 'Fact',
+        id: fact.id,
+      });
+    }
+  }
+  for (const observation of state.observations) {
+    if (observation.based_on.length === 0 && observation.provenance.length === 0) {
+      throw new ReconError(
+        'InvalidEpistemicDependency',
+        'Observation requires supporting facts or explicit source provenance stating why no fact exists',
+        { entity: 'Observation', id: observation.id },
+      );
+    }
+  }
+  for (const assumption of state.assumptions) {
+    assertNonEmptyBasis(assumption.based_on, 'Assumption');
+  }
+  for (const hypothesis of state.hypotheses) {
+    assertNonEmptyBasis(hypothesis.based_on, 'Hypothesis');
+  }
+  for (const evidence of state.evidence) {
+    if (evidence.provenance.length === 0) {
+      throw new ReconError('MissingProvenance', 'Evidence requires at least one provenance record', {
+        entity: 'Evidence',
+        id: evidence.id,
+      });
+    }
+    if (evidence.supports.length === 0 && evidence.contradicts.length === 0) {
+      throw new ReconError(
+        'InvalidEvidenceReference',
+        'Evidence must support or contradict at least one epistemic object',
+        { entity: 'Evidence', id: evidence.id },
+      );
+    }
+  }
+}
+
 function assertContentIds(state: ReconState): void {
   const mismatch = (entity: string, id: string): never => {
     throw new ReconError(
@@ -280,6 +322,7 @@ export function validateReconState(
   const normalized: ReconState = { ...state, provenance: derivedProvenance };
   assertEntityIdentity(normalized);
   assertEpistemicConfidence(normalized);
+  assertEpistemicRules(normalized);
   assertContentIds(normalized);
   assertReferentialIntegrity(normalized);
   return normalized;
