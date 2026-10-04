@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { stableStringify } from '../util/canonical.js';
-import { normalizeAddress, normalizeChainId, normalizeName } from './normalize.js';
+import { normalizeAddress, normalizeChainId, normalizeName, normalizeSourceFile } from './normalize.js';
 
 export type ContentIdPrefix =
   | 'fact'
@@ -23,6 +23,10 @@ export function projectId(name: string): string {
 
 export function contractId(identity: AddressIdentity): string {
   return addressScopedId('contract', identity);
+}
+
+export function sourceContractId(sourceFile: string, name: string): string {
+  return `contract:${normalizeSourceFile(sourceFile)}:${normalizeName(name).toLowerCase()}`;
 }
 
 export function functionId(contractIdValue: string, signature: string): string {

@@ -15,7 +15,14 @@ export type ReconErrorCode =
   | 'InvalidConfidence'
   | 'EntityNotFound'
   | 'InvalidReconState'
-  | 'MigrationError';
+  | 'MigrationError'
+  | 'RootEscape'
+  | 'SourceLimitExceeded'
+  | 'NoSourcesFound'
+  | 'CompilerUnavailable'
+  | 'VersionConflict'
+  | 'ChecksumMismatch'
+  | 'CompilationFailed';
 
 export interface ReconErrorDetails {
   [key: string]: unknown;

@@ -6,6 +6,7 @@ import {
   functionId,
   projectId,
   roleId,
+  sourceContractId,
   stateVariableId,
 } from '../ids/ids.js';
 import { RELATIONSHIP_TYPES } from '../relationships/types.js';
@@ -118,7 +119,11 @@ function assertEntityIdentity(state: ReconState): void {
   }
   for (const contract of state.contracts) {
     check('Contract', contract.id, () =>
-      contractId({ name: contract.name, chainId: contract.chain_id, address: contract.address }),
+      contract.address !== undefined
+        ? contractId({ name: contract.name, chainId: contract.chain_id, address: contract.address })
+        : contract.source_file !== undefined
+          ? sourceContractId(contract.source_file, contract.name)
+          : contractId({ name: contract.name }),
     );
   }
   for (const fn of state.functions) {

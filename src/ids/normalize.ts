@@ -27,3 +27,17 @@ export function normalizeName(name: string): string {
   }
   return trimmed;
 }
+
+export function normalizeSourceFile(path: string): string {
+  const posix = path.replace(/\\/g, '/');
+  const segments = posix.split('/').filter((segment) => segment.length > 0 && segment !== '.');
+  const joined = segments.join('/');
+  if (joined.trim().length === 0) {
+    throw new ReconError('InvalidIdentifier', 'source file path must not be empty', { path });
+  }
+  return joined
+    .toLowerCase()
+    .split('/')
+    .join('__')
+    .replace(/[^a-z0-9_]/g, '_');
+}

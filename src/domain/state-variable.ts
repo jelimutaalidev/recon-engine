@@ -14,6 +14,7 @@ const StateVariableShape = {
   type: z.string().trim().min(1),
   visibility: stateVisibilitySchema,
   slot: z.string().trim().toLowerCase().regex(STORAGE_SLOT_PATTERN).optional(),
+  mutability: z.enum(['mutable', 'constant', 'immutable']).optional(),
   source: z.string().trim().min(1).optional(),
 } as const;
 
