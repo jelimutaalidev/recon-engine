@@ -71,7 +71,7 @@ on input (it is derived); if provided, it must exactly match the derived id set.
 
 | Entity | Must reference | Confidence |
 |---|---|---|
-| Fact | ≥1 provenance; `object_id` XOR `value` | forced `VERIFIED` |
+| Fact | ≥1 provenance; at least one of `object_id` / `value` | forced `VERIFIED` |
 | Observation | ≥1 fact in `based_on` OR ≥1 provenance | forced `DERIVED` |
 | Assumption | ≥1 observation in `based_on` | forced `INFERRED` |
 | Hypothesis | ≥1 assumption/observation in `based_on` | forced `SPECULATIVE` |
