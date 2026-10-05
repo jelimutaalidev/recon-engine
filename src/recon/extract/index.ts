@@ -13,18 +13,37 @@ import type { Extractor, ExtractorContext, StatePatch } from './types.js';
 export { createProvenanceFactory } from './types.js';
 export type { Extractor, ExtractorContext, ProvenanceFactory, StatePatch } from './types.js';
 
-export const EXTRACTORS: readonly Extractor[] = [
-  contractsExtractor,
-  functionsExtractor,
-  stateVariablesExtractor,
-  inheritanceExtractor,
-  callsExtractor,
-  storageAccessExtractor,
-  eventErrorFactsExtractor,
+export interface NamedExtractor {
+  operation: string;
+  run: Extractor;
+}
+
+export const EXTRACTORS: readonly NamedExtractor[] = [
+  { operation: 'extract.contracts', run: contractsExtractor },
+  { operation: 'extract.functions', run: functionsExtractor },
+  { operation: 'extract.state_variables', run: stateVariablesExtractor },
+  { operation: 'extract.inheritance', run: inheritanceExtractor },
+  { operation: 'extract.calls', run: callsExtractor },
+  { operation: 'extract.storage_access', run: storageAccessExtractor },
+  { operation: 'extract.event_error_facts', run: eventErrorFactsExtractor },
 ];
 
+export function runExtractorsWithLineage(ctx: ExtractorContext): {
+  patch: StatePatch;
+  perExtractor: { operation: string; patch: StatePatch }[];
+} {
+  const perExtractor = EXTRACTORS.map(({ operation, run }) => ({
+    operation,
+    patch: run(ctx),
+  }));
+  return {
+    patch: mergePatches(perExtractor.map((entry) => entry.patch)),
+    perExtractor,
+  };
+}
+
 export function runExtractors(ctx: ExtractorContext): StatePatch {
-  return mergePatches(EXTRACTORS.map((extractor) => extractor(ctx)));
+  return runExtractorsWithLineage(ctx).patch;
 }
 
 export function mergePatches(patches: readonly StatePatch[]): StatePatch {
