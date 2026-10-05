@@ -6,6 +6,7 @@ import { MATERIAL_ENTITY_TYPES } from './types.js';
 import type {
   Derivation,
   ReconRun,
+  RunComparison,
   RunOutputRecord,
   TraceReference,
   TraceStatus,
@@ -66,6 +67,7 @@ export interface TraceabilityService {
   findOrphanedTraceReferences(): OrphanedTraceReference[];
   getTraceStatus(objectId: string): TraceStatus;
   getOutputs(runId: string): TraceReference[];
+  compareRuns(runIdA: string, runIdB: string): RunComparison;
 }
 
 interface EntityInfo {
@@ -309,6 +311,16 @@ export function createTraceabilityService(state: ReconState): TraceabilityServic
       });
     }
     return info;
+  }
+
+  function requireRun(runId: string): ReconRun {
+    const run = runsById.get(runId);
+    if (run === undefined) {
+      throw new ReconError('EntityNotFound', `run ${runId} does not exist in this state`, {
+        id: runId,
+      });
+    }
+    return run;
   }
 
   function statusOf(objectId: string, info: EntityInfo): TraceStatus {
@@ -571,6 +583,47 @@ export function createTraceabilityService(state: ReconState): TraceabilityServic
       return (outputsByRun.get(runId) ?? [])
         .map((record) => ({ entity_type: record.entity_type, entity_id: record.entity_id }))
         .sort(compareRefs);
+    },
+
+    compareRuns(runIdA, runIdB) {
+      const runA = requireRun(runIdA);
+      const runB = requireRun(runIdB);
+      const outputsA = new Map<string, RunOutputRecord>();
+      for (const record of outputsByRun.get(runIdA) ?? []) outputsA.set(refKey(record), record);
+      const outputsB = new Map<string, RunOutputRecord>();
+      for (const record of outputsByRun.get(runIdB) ?? []) outputsB.set(refKey(record), record);
+      const added: TraceReference[] = [];
+      const removed: TraceReference[] = [];
+      const changed: TraceReference[] = [];
+      const unchanged: TraceReference[] = [];
+      for (const [key, recordB] of outputsB) {
+        const recordA = outputsA.get(key);
+        if (recordA === undefined) {
+          added.push({ entity_type: recordB.entity_type, entity_id: recordB.entity_id });
+        } else if (recordA.content_hash !== recordB.content_hash) {
+          changed.push({ entity_type: recordB.entity_type, entity_id: recordB.entity_id });
+        } else {
+          unchanged.push({ entity_type: recordB.entity_type, entity_id: recordB.entity_id });
+        }
+      }
+      for (const [key, recordA] of outputsA) {
+        if (!outputsB.has(key)) {
+          removed.push({ entity_type: recordA.entity_type, entity_id: recordA.entity_id });
+        }
+      }
+      const classification: RunComparison['classification'] =
+        runA.source_identity.source_hash !== runB.source_identity.source_hash
+          ? 'diff_source'
+          : runA.analyzer_version !== runB.analyzer_version
+            ? 'same_source_diff_analyzer'
+            : 'same_source_same_analyzer';
+      return {
+        classification,
+        added: added.sort(compareRefs),
+        removed: removed.sort(compareRefs),
+        changed: changed.sort(compareRefs),
+        unchanged: unchanged.sort(compareRefs),
+      };
     },
   };
 }

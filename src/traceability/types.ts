@@ -67,6 +67,14 @@ export interface RunOutputRecord {
   content_hash: string;
 }
 
+export interface RunComparison {
+  classification: 'same_source_same_analyzer' | 'same_source_diff_analyzer' | 'diff_source';
+  added: TraceReference[];
+  removed: TraceReference[];
+  changed: TraceReference[];
+  unchanged: TraceReference[];
+}
+
 export interface TraceabilityState {
   runs: ReconRun[];
   derivations: Derivation[];
