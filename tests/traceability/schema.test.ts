@@ -494,6 +494,49 @@ describe('traceability validation', () => {
     expect(issues[0]?.missing).toEqual(['src/Missing.sol']);
   });
 
+  it('resolves source inputs from entity-embedded provenance and still rejects unknown files', () => {
+    const base = buildBase();
+    expect('provenance' in base.input).toBe(false);
+    const run = runFixture(currentHash(base.input));
+
+    const resolved = createReconState({
+      ...base.input,
+      traceability: {
+        runs: [run],
+        derivations: [derivationFixture({ outputs: materialRefs(base.ids) })],
+        outputs: outputRecords(RUN_ID, base.ids),
+      },
+    });
+    expect(resolved.traceability?.derivations[0]?.inputs.map((ref) => ref.entity_id)).toEqual([
+      'src/Vault.sol',
+    ]);
+    expect(resolved.provenance.some((record) => record.file === 'src/Vault.sol')).toBe(true);
+
+    const { code, details } = catchRecon(() =>
+      createReconState({
+        ...base.input,
+        traceability: {
+          runs: [run],
+          derivations: [
+            derivationFixture({
+              inputs: [{ entity_type: 'source_file', entity_id: 'src/Nowhere.sol' }],
+              outputs: materialRefs(base.ids),
+            }),
+          ],
+          outputs: outputRecords(RUN_ID, base.ids),
+        },
+      }),
+    );
+    expect(code).toBe('InvalidReconState');
+    expect(traceIssues(details)).toEqual([
+      {
+        check: 'traceability',
+        source: derivationFixture().id,
+        missing: ['src/Nowhere.sol'],
+      },
+    ]);
+  });
+
   it('rejects a material entity not covered by current-run derivations', () => {
     const base = buildBase();
     const run = runFixture(currentHash(base.input));

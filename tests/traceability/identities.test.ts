@@ -227,6 +227,19 @@ describe('identity builders', () => {
       timestamp: '2024-01-01T00:00:00.000Z',
     };
     expect(computeConfigHash(configWithTimestamp)).not.toBe(computeConfigHash(configA));
+
+    const reordered: ReconConfig = {
+      ...configA,
+      includes: ['lib/**/*.sol', 'src/**/*.sol'],
+      excludes: ['lib/**', 'vendor/**'],
+    };
+    const sameSets: ReconConfig = {
+      ...configA,
+      includes: ['src/**/*.sol', 'lib/**/*.sol'],
+      excludes: ['vendor/**', 'lib/**'],
+    };
+    expect(computeConfigHash(reordered)).toBe(computeConfigHash(sameSets));
+    expect(computeConfigHash({ ...configA, excludes: [] })).not.toBe(computeConfigHash(configA));
   });
 
   it('manifest hash is order independent', () => {

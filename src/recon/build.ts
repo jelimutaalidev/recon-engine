@@ -1,7 +1,18 @@
 import { basename } from 'node:path';
 import { createProject } from '../domain/project.js';
-import type { ReconState } from '../recon-state/schema.js';
+import type { ReconState, ReconStateInput } from '../recon-state/schema.js';
 import { createReconState } from '../recon-state/state.js';
+import { buildTraceability } from '../traceability/build.js';
+import {
+  computeCompilerIdentity,
+  computeConfigHash,
+  computeInputManifestHash,
+  computeOutputIdentity,
+  computeSourceIdentity,
+  createRunId,
+  type InputManifestPayload,
+} from '../traceability/identities.js';
+import { ANALYZER_VERSION } from '../version.js';
 import type { ReconConfig } from './config.js';
 import type { StatePatch } from './extract/index.js';
 import { gitToplevelMatches, runGit } from './git.js';
@@ -46,9 +57,13 @@ function sortById<T extends { id: string }>(items: readonly T[]): T[] {
 export interface BuildStateInput {
   config: ReconConfig;
   patch: StatePatch;
+  perExtractor: readonly { operation: string; patch: StatePatch }[];
   git: GitContext;
   repository: string | undefined;
   timestamp: string;
+  files: readonly { path: string; sha256: string; bytes: number }[];
+  solcLongVersion: string;
+  fidelity: 'semantic' | 'syntactic';
 }
 
 export function buildState(input: BuildStateInput): ReconState {
@@ -59,7 +74,7 @@ export function buildState(input: BuildStateInput): ReconState {
     created_at: input.timestamp,
     updated_at: input.timestamp,
   });
-  return createReconState({
+  const baseInput: ReconStateInput = {
     project,
     contracts: sortById(input.patch.contracts),
     functions: sortById(input.patch.functions),
@@ -73,5 +88,34 @@ export function buildState(input: BuildStateInput): ReconState {
     assumptions: [],
     hypotheses: [],
     evidence: [],
+  };
+  const base = createReconState(baseInput);
+
+  const sourceIdentity = computeSourceIdentity(input.files, input.git, basename(input.config.root));
+  const compilerIdentity = computeCompilerIdentity(input.solcLongVersion);
+  const { timestamp: _executionTimestamp, ...configForHash } = input.config;
+  const configurationIdentity = { config_hash: computeConfigHash(configForHash) };
+  const manifestPayload: InputManifestPayload = {
+    sourceIdentity,
+    configHash: configurationIdentity.config_hash,
+    compilerIdentity,
+    analyzerVersion: ANALYZER_VERSION,
+    schemaVersion: base.schema_version,
+  };
+  const traceability = buildTraceability({
+    projectId: project.id,
+    startedAt: input.timestamp,
+    schemaVersion: base.schema_version,
+    sourceIdentity,
+    compilerIdentity,
+    configurationIdentity,
+    inputManifestHash: computeInputManifestHash(manifestPayload),
+    runId: createRunId(manifestPayload),
+    outputIdentity: computeOutputIdentity(base),
+    perExtractor: input.perExtractor,
+    mergedPatch: input.patch,
+    fidelity: input.fidelity,
   });
+
+  return createReconState({ ...baseInput, traceability });
 }

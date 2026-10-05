@@ -375,7 +375,7 @@ function assertTraceability(state: ReconState): void {
   if (currentRun !== undefined) {
     const material = materialEntities(state);
     const sourceFiles = new Set(
-      state.provenance
+      collectProvenance(state)
         .map((record) => record.file)
         .filter((file): file is string => file !== undefined),
     );

@@ -37,8 +37,12 @@ export function computeManifestHash(
 }
 
 export function computeConfigHash(config: ReconConfig): string {
-  const { root: _root, ...rest } = config;
-  return stableStringify(rest);
+  const { root: _root, includes, excludes, ...rest } = config;
+  return stableStringify({
+    ...rest,
+    includes: [...includes].sort(),
+    excludes: [...excludes].sort(),
+  });
 }
 
 export function computeCompilerIdentity(

@@ -2,7 +2,7 @@ import { compileProject } from './backend/solc/compile.js';
 import { buildState, resolveGitContext, resolveProjectRepository } from './build.js';
 import type { ReconConfig } from './config.js';
 import { discoverSources } from './discover.js';
-import { createProvenanceFactory, runExtractors } from './extract/index.js';
+import { createProvenanceFactory, runExtractorsWithLineage } from './extract/index.js';
 import { buildIr } from './ir/build.js';
 import { sortIssues, type ReconIssue } from './issues.js';
 import type { ReconState } from '../recon-state/schema.js';
@@ -28,7 +28,7 @@ export async function analyzeProject(config: ReconConfig): Promise<AnalysisResul
   const discovered = await discoverSources(effective);
   const compiled = await compileProject(effective, discovered.files);
   const { ir, issues: irIssues } = buildIr(compiled, discovered.files);
-  const patch = runExtractors({
+  const { patch, perExtractor } = runExtractorsWithLineage({
     ir,
     config: effective,
     provenance: createProvenanceFactory({
@@ -39,9 +39,13 @@ export async function analyzeProject(config: ReconConfig): Promise<AnalysisResul
   const state = buildState({
     config: effective,
     patch,
+    perExtractor,
     git,
     repository,
     timestamp: time.timestamp,
+    files: discovered.files,
+    solcLongVersion: compiled.longVersion,
+    fidelity: compiled.fidelity,
   });
   const issues = sortIssues([
     ...(time.issue !== undefined ? [time.issue] : []),
