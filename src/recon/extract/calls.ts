@@ -1,8 +1,9 @@
+import { bucketIssue, flushIssues, type IssueBuckets } from '../issue-buckets.js';
 import { createFact } from '../../epistemic/fact.js';
 import { createRelationship, type Relationship } from '../../relationships/relationship.js';
 import { createReconIssue, type ReconIssue } from '../issues.js';
-import type { CallKind, ContractIR, Span } from '../ir/types.js';
-import { functionEntityId, patchOf, sourceFileSet, type Extractor } from './types.js';
+import type { CallKind, Span } from '../ir/types.js';
+import { contractScope, functionEntityId, patchOf, type Extractor } from './types.js';
 
 const RESOLVED_KINDS: ReadonlySet<CallKind> = new Set<CallKind>([
   'internal',
@@ -57,38 +58,6 @@ const TARGET_ISSUES = {
   },
 } as const;
 
-interface IssueBucket {
-  code: string;
-  message: string;
-  file: string;
-  count: number;
-  lineStart: number;
-  lineEnd: number;
-}
-
-function bucketIssue(
-  buckets: Map<string, IssueBucket>,
-  spec: { code: string; message: string },
-  span: Span,
-): void {
-  const key = `${spec.code} ${span.file}`;
-  const existing = buckets.get(key);
-  if (existing === undefined) {
-    buckets.set(key, {
-      code: spec.code,
-      message: spec.message,
-      file: span.file,
-      count: 1,
-      lineStart: span.lineStart,
-      lineEnd: span.lineEnd,
-    });
-    return;
-  }
-  existing.count += 1;
-  existing.lineStart = Math.min(existing.lineStart, span.lineStart);
-  existing.lineEnd = Math.max(existing.lineEnd, span.lineEnd);
-}
-
 function pushMarker(
   markers: Map<string, { subject_id: string; predicate: 'CALLS' | 'DELEGATES_TO'; value: string; spans: Span[] }>,
   spec: MarkerSpec,
@@ -105,12 +74,9 @@ function pushMarker(
 }
 
 export const callsExtractor: Extractor = (ctx) => {
-  const files = sourceFileSet(ctx.ir);
-  const scope = new Map<string, ContractIR>();
+  const scope = contractScope(ctx.ir);
   const targets = new Map<string, Map<string, string>>();
-  for (const contract of ctx.ir.contracts) {
-    if (!files.has(contract.span.file)) continue;
-    scope.set(contract.fqn, contract);
+  for (const contract of scope.values()) {
     const bySignature = new Map<string, string>();
     for (const fn of contract.functions) {
       const id = functionEntityId(contract, fn);
@@ -130,7 +96,7 @@ export const callsExtractor: Extractor = (ctx) => {
     string,
     { subject_id: string; predicate: 'CALLS' | 'DELEGATES_TO'; value: string; spans: Span[] }
   >();
-  const issueBuckets = new Map<string, IssueBucket>();
+  const issueBuckets: IssueBuckets = new Map();
 
   for (const contract of scope.values()) {
     for (const fn of contract.functions) {
@@ -192,17 +158,7 @@ export const callsExtractor: Extractor = (ctx) => {
     }),
   );
 
-  const issues: ReconIssue[] = [...issueBuckets.values()].map((bucket) =>
-    createReconIssue({
-      severity: 'UNKNOWN',
-      code: bucket.code,
-      message: bucket.message,
-      file: bucket.file,
-      line_start: bucket.lineStart,
-      line_end: bucket.lineEnd,
-      count: bucket.count,
-    }),
-  );
+  const issues: ReconIssue[] = flushIssues(issueBuckets, 'UNKNOWN');
 
   return patchOf({ relationships, facts, issues });
 };

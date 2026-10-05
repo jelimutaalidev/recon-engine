@@ -4,7 +4,7 @@ import type { ReconState } from '../recon-state/schema.js';
 import { createReconState } from '../recon-state/state.js';
 import type { ReconConfig } from './config.js';
 import type { StatePatch } from './extract/index.js';
-import { gitToplevelMatches, runGit } from './timestamp.js';
+import { gitToplevelMatches, runGit } from './git.js';
 
 export interface GitContext {
   repository?: string | undefined;

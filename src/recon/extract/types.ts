@@ -18,7 +18,7 @@ export interface StatePatch {
   issues: ReconIssue[];
 }
 
-export type ProvenanceFactory = (span: Span, description?: string) => ProvenanceInput;
+export type ProvenanceFactory = (span: Span) => ProvenanceInput;
 
 export interface ExtractorContext {
   ir: NormalizedProject;
@@ -31,14 +31,13 @@ export type Extractor = (ctx: ExtractorContext) => StatePatch;
 export function createProvenanceFactory(
   git?: { repository?: string; commit?: string },
 ): ProvenanceFactory {
-  return (span, description) => ({
+  return (span) => ({
     source_type: 'source_code',
     file: span.file,
     line_start: span.lineStart,
     line_end: span.lineEnd,
     ...(git?.repository !== undefined ? { repository: git.repository } : {}),
     ...(git?.commit !== undefined ? { commit: git.commit } : {}),
-    ...(description !== undefined ? { description } : {}),
   });
 }
 
@@ -55,6 +54,15 @@ export function emptyPatch(): StatePatch {
 
 export function sourceFileSet(ir: NormalizedProject): Set<string> {
   return new Set(ir.files.map((file) => file.path));
+}
+
+export function contractScope(ir: NormalizedProject): Map<string, ContractIR> {
+  const files = sourceFileSet(ir);
+  const scope = new Map<string, ContractIR>();
+  for (const contract of ir.contracts) {
+    if (files.has(contract.span.file)) scope.set(contract.fqn, contract);
+  }
+  return scope;
 }
 
 export function spanString(span: Span): string {

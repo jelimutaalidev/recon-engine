@@ -1,6 +1,8 @@
+import { createHash } from 'node:crypto';
 import type { CompileProjectResult } from '../backend/solc/compile.js';
 import { parsePragmas } from '../backend/solc/versions.js';
 import type { DiscoveredFile } from '../discover.js';
+import { bucketIssue, flushIssues, type IssueBuckets } from '../issue-buckets.js';
 import { createReconIssue, type ReconIssue } from '../issues.js';
 import { lineMap } from './line-map.js';
 import type {
@@ -169,7 +171,10 @@ function abiTypeOf(param: Ast, fallback: string): string {
   return typeString;
 }
 
-function buildParams(parameterList: unknown): { params: ParamIR[]; abiTypes: string[] } {
+function buildParams(
+  parameterList: unknown,
+  ctx?: BuildContext,
+): { params: ParamIR[]; abiTypes: string[] } {
   const list = asAst(parameterList);
   const params: ParamIR[] = [];
   const abiTypes: string[] = [];
@@ -177,9 +182,62 @@ function buildParams(parameterList: unknown): { params: ParamIR[]; abiTypes: str
     const name = str(param.name);
     const type = typeFromTypeName(param.typeName);
     params.push(name !== undefined && name.length > 0 ? { name, type } : { type });
-    abiTypes.push(abiTypeOf(param, type));
+    abiTypes.push(ctx !== undefined ? abiTypeOfNode(param, ctx) : abiTypeOf(param, type));
   }
   return { params, abiTypes };
+}
+
+function abiTypeOfNode(param: Ast, ctx: BuildContext): string {
+  const fallback = str(param.typeDescriptions?.typeString);
+  const typeName = asAst(param.typeName);
+  if (typeName === undefined) return fallback ?? typeFromTypeName(param.typeName);
+  const resolved = abiTypeNode(typeName, ctx);
+  return resolved ?? fallback ?? typeFromTypeName(param.typeName);
+}
+
+function abiTypeNode(node: Ast, ctx: BuildContext): string | undefined {
+  switch (node.nodeType) {
+    case 'ElementaryTypeName': {
+      const name = typeFromTypeName(node);
+      return name === 'address payable' ? 'address' : name.length > 0 ? name : undefined;
+    }
+    case 'ArrayTypeName': {
+      const base = asAst(node.baseType);
+      if (base === undefined) return undefined;
+      const element = abiTypeNode(base, ctx);
+      if (element === undefined) return undefined;
+      const length = asAst(node.length);
+      if (length?.nodeType === 'Literal') return `${element}[${str(length.value) ?? ''}]`;
+      return `${element}[]`;
+    }
+    case 'UserDefinedTypeName':
+    case 'IdentifierPath': {
+      const ref =
+        num(node.referencedDeclaration) ?? num(asAst(node.pathNode)?.referencedDeclaration);
+      const decl = ref === undefined ? undefined : ctx.declById.get(ref);
+      if (decl?.nodeType === 'ContractDefinition') return 'address';
+      if (decl?.nodeType === 'EnumDefinition') return 'uint8';
+      if (decl?.nodeType === 'UserDefinedValueTypeDefinition') {
+        const underlying = asAst(decl.underlyingType);
+        return underlying === undefined ? undefined : abiTypeNode(underlying, ctx);
+      }
+      if (decl?.nodeType === 'StructDefinition') {
+        const members = astList(decl.members).map((member) => {
+          const memberType = asAst(member.typeName);
+          return memberType === undefined ? '' : (abiTypeNode(memberType, ctx) ?? '');
+        });
+        if (members.length === 0 || members.some((member) => member.length === 0)) {
+          return undefined;
+        }
+        return `(${members.join(',')})`;
+      }
+      return undefined;
+    }
+    case 'Mapping':
+      return undefined;
+    default:
+      return undefined;
+  }
 }
 
 function normalizeContractKind(value: string | undefined): ContractKind {
@@ -201,11 +259,6 @@ function sigFor(kind: FunctionKind, name: string, types: readonly string[]): str
   if (kind === 'receive') return 'receive()';
   if (kind === 'fallback') return `fallback(${joined})`;
   return `${name}(${joined})`;
-}
-
-function defSignature(node: Ast): string {
-  const { params } = buildParams(node.parameters);
-  return `${str(node.name) ?? ''}(${params.map((param) => param.type).join(',')})`;
 }
 
 function fnSignature(decl: Ast): string {
@@ -233,16 +286,7 @@ interface BuildContext {
   output: CompileProjectResult['output'];
   lineCache: Map<string, LineFn>;
   bufferCache: Map<string, Buffer>;
-  unsupported: Map<string, UnsupportedBucket>;
-}
-
-interface UnsupportedBucket {
-  code: string;
-  message: string;
-  file: string;
-  count: number;
-  lineStart: number;
-  lineEnd: number;
+  unsupported: IssueBuckets;
 }
 
 const UNSUPPORTED_SPECS = {
@@ -273,23 +317,7 @@ function reportUnsupported(
   line: LineFn,
   node: Ast,
 ): void {
-  const span = spanOfNode(node, file, line);
-  const key = `${spec.code} ${file}`;
-  const existing = ctx.unsupported.get(key);
-  if (existing === undefined) {
-    ctx.unsupported.set(key, {
-      code: spec.code,
-      message: spec.message,
-      file,
-      count: 1,
-      lineStart: span.lineStart,
-      lineEnd: span.lineEnd,
-    });
-    return;
-  }
-  existing.count += 1;
-  existing.lineStart = Math.min(existing.lineStart, span.lineStart);
-  existing.lineEnd = Math.max(existing.lineEnd, span.lineEnd);
+  bucketIssue(ctx.unsupported, spec, spanOfNode(node, file, line));
 }
 
 function lineFor(file: string, ctx: BuildContext): LineFn {
@@ -660,7 +688,7 @@ function walkEmitStatement(node: Ast, out: BodyOut, env: BodyEnv): void {
   const ref = num(callee?.referencedDeclaration);
   const decl = ref === undefined ? undefined : env.ctx.declById.get(ref);
   const signature =
-    env.ctx.semantic && decl?.nodeType === 'EventDefinition' ? defSignature(decl) : undefined;
+    env.ctx.semantic && decl?.nodeType === 'EventDefinition' ? fnSignature(decl) : undefined;
   out.eventEmits.push({ signature, span: spanIn(node, env) });
   for (const argument of astList(call?.arguments)) walkExpr(argument, out, env);
 }
@@ -673,7 +701,7 @@ function walkRevertStatement(node: Ast, out: BodyOut, env: BodyEnv): void {
     const ref = num(callee?.referencedDeclaration);
     const decl = ref === undefined ? undefined : env.ctx.declById.get(ref);
     const signature =
-      env.ctx.semantic && decl?.nodeType === 'ErrorDefinition' ? defSignature(decl) : undefined;
+      env.ctx.semantic && decl?.nodeType === 'ErrorDefinition' ? fnSignature(decl) : undefined;
     out.customErrorUses.push({ signature, span: spanIn(node, env) });
   }
   for (const argument of astList(call?.arguments)) walkExpr(argument, out, env);
@@ -817,8 +845,8 @@ interface FunctionEnv {
 function buildFunction(node: Ast, env: FunctionEnv): FunctionIR {
   const name = str(node.name) ?? '';
   const kind = normalizeFunctionKind(str(node.kind));
-  const { params, abiTypes } = buildParams(node.parameters);
-  const { params: returns } = buildParams(node.returnParameters);
+  const { params, abiTypes } = buildParams(node.parameters, env.ctx);
+  const { params: returns } = buildParams(node.returnParameters, env.ctx);
   const content = bufferFor(env.file, env.ctx);
   const modifiers = buildModifiers(astList(node.modifiers), content);
   const canonicalSignature = sigFor(kind, name, params.map((param) => param.type));
@@ -912,7 +940,7 @@ function buildContract(node: Ast, file: string, ctx: BuildContext): ContractIR {
       events.push({
         name: str(member.name) ?? '',
         params,
-        canonicalSignature: defSignature(member),
+        canonicalSignature: fnSignature(member),
         span: spanOfNode(member, file, line),
       });
     } else if (member.nodeType === 'ErrorDefinition') {
@@ -920,7 +948,7 @@ function buildContract(node: Ast, file: string, ctx: BuildContext): ContractIR {
       customErrors.push({
         name: str(member.name) ?? '',
         params,
-        canonicalSignature: defSignature(member),
+        canonicalSignature: fnSignature(member),
         span: spanOfNode(member, file, line),
       });
     } else {
@@ -997,7 +1025,7 @@ export function buildIr(
         fileLevelErrors.push({
           name: str(child.name) ?? '',
           params: buildParams(child.parameters).params,
-          canonicalSignature: defSignature(child),
+          canonicalSignature: fnSignature(child),
           span: spanOfNode(child, path, line),
         });
       } else {
@@ -1007,23 +1035,19 @@ export function buildIr(
     }
   }
 
-  for (const bucket of ctx.unsupported.values()) {
-    issues.push(
-      createReconIssue({
-        severity: 'UNSUPPORTED',
-        code: bucket.code,
-        message: bucket.message,
-        file: bucket.file,
-        line_start: bucket.lineStart,
-        line_end: bucket.lineEnd,
-        count: bucket.count,
-      }),
-    );
-  }
+  issues.push(...flushIssues(ctx.unsupported, 'UNSUPPORTED'));
 
+  const sourceHash = createHash('sha256')
+    .update(
+      [...files]
+        .sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))
+        .map((file) => `${file.path}:${file.sha256}`)
+        .join('\n'),
+    )
+    .digest('hex');
   const ir: NormalizedProject = {
     fidelity: result.fidelity,
-    compiler: { longVersion: result.longVersion },
+    compiler: { longVersion: result.longVersion, sourceHash },
     files: sourceFiles,
     contracts,
     fileLevelErrors,

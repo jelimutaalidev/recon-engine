@@ -1,15 +1,10 @@
 import { sourceContractId } from '../../ids/ids.js';
 import { createRelationship, type Relationship } from '../../relationships/relationship.js';
 import { createReconIssue, type ReconIssue } from '../issues.js';
-import type { ContractIR } from '../ir/types.js';
-import { patchOf, sourceFileSet, type Extractor } from './types.js';
+import { contractScope, patchOf, type Extractor } from './types.js';
 
 export const inheritanceExtractor: Extractor = (ctx) => {
-  const files = sourceFileSet(ctx.ir);
-  const scope = new Map<string, ContractIR>();
-  for (const contract of ctx.ir.contracts) {
-    if (files.has(contract.span.file)) scope.set(contract.fqn, contract);
-  }
+  const scope = contractScope(ctx.ir);
   const relationships: Relationship[] = [];
   const issues: ReconIssue[] = [];
   for (const contract of scope.values()) {

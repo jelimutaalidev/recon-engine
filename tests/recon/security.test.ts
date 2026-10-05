@@ -57,6 +57,26 @@ describe('security: untrusted repositories', () => {
     expect(result.state.contracts.some((contract) => contract.name === 'Evil')).toBe(false);
   });
 
+  it('does not let absolute include patterns reach files outside the analysis root', async () => {
+    const base = tempRoot('recon-sec-');
+    const root = join(base, 'project');
+    mkdirSync(root);
+    writeFileSync(join(root, 'A.sol'), 'contract A {}');
+    writeFileSync(join(base, 'Evil.sol'), 'contract Evil {}');
+
+    const config = parseReconConfig({
+      root,
+      includes: ['**/*.sol', join(base, 'Evil.sol'), join(base, '*.sol')],
+      recordGit: false,
+      timestamp: '2026-01-01T00:00:00.000Z',
+    });
+    const result = await analyzeProject(config);
+
+    expect(result.meta.fileCount).toBe(1);
+    expect(result.state.contracts.map((contract) => contract.name)).toEqual(['A']);
+    expect(result.state.contracts.some((contract) => contract.name === 'Evil')).toBe(false);
+  });
+
   it('refuses a symlinked file that resolves outside the root (FATAL RootEscape)', async () => {
     const base = tempRoot('recon-sec-');
     const root = join(base, 'project');

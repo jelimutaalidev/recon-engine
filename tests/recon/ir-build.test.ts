@@ -78,6 +78,19 @@ library Lib { function twice(uint256 a) internal pure returns (uint256) { return
 abstract contract AbstractThing { function later() public virtual; }
 `;
 
+const SELECTOR_TYPES = `// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+type Balance is uint256;
+
+contract Selectors {
+  struct Info { uint8 tag; bytes32 key; }
+
+  function record(Info calldata info) public pure returns (uint256) { return info.tag; }
+  function mint(Balance amount) public pure returns (uint256) { return Balance.unwrap(amount); }
+}
+`;
+
 const SEMANTIC_BROKEN = `// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 contract Broken {
@@ -327,6 +340,34 @@ describe('buildIr (semantic)', () => {
     expect(send?.eventEmits[0]?.signature).toBe('Sent(address,uint256)');
     expect(send?.customErrorUses).toHaveLength(1);
     expect(send?.customErrorUses[0]?.signature).toBe('Insufficient(uint256)');
+  });
+
+  it('derives selectors from methodIdentifiers for struct and UDVT parameters', async () => {
+    const { ir } = await irOf({ 'Repo.sol': SELECTOR_TYPES });
+    const contract = ir.contracts.find((entry) => entry.name === 'Selectors');
+    const record = contract?.functions.find((fn) => fn.name === 'record');
+    const mint = contract?.functions.find((fn) => fn.name === 'mint');
+
+    expect(record?.methodIdentifier).toBe('record((uint8,bytes32))');
+    expect(record?.selector).toMatch(/^[0-9a-f]{8}$/);
+    expect(mint?.methodIdentifier).toBe('mint(uint256)');
+    expect(mint?.selector).toMatch(/^[0-9a-f]{8}$/);
+  });
+
+  it('records a deterministic sourceHash over the compiled sources', async () => {
+    const { ir, discovered } = await irOf({
+      'A.sol': 'pragma solidity ^0.8.0; contract A {}',
+      'B.sol': 'pragma solidity ^0.8.0; contract B {}',
+    });
+    const expected = createHash('sha256')
+      .update(
+        [...discovered.files]
+          .sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))
+          .map((file) => `${file.path}:${file.sha256}`)
+          .join('\n'),
+      )
+      .digest('hex');
+    expect(ir.compiler?.sourceHash).toBe(expected);
   });
 
   it('lists source files with pragmas and sha256', async () => {

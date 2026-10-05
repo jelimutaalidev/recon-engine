@@ -127,7 +127,7 @@ export interface ContractIR {
 
 export interface NormalizedProject {
   fidelity: 'semantic' | 'syntactic';
-  compiler?: { longVersion: string };
+  compiler?: { longVersion: string; sourceHash?: string };
   files: SourceFile[];
   contracts: ContractIR[];
   fileLevelErrors: CustomErrorIR[];
