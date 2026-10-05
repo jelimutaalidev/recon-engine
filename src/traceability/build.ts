@@ -1,5 +1,5 @@
 import type { Provenance } from '../epistemic/provenance.js';
-import type { StatePatch } from '../recon/extract/index.js';
+import { spanFile, type StatePatch } from '../recon/extract/types.js';
 import { ANALYZER_VERSION } from '../version.js';
 import { derivationId, entityContentHash } from './identities.js';
 import type {
@@ -72,6 +72,8 @@ function patchLineage(patch: StatePatch): {
   const visit = (entity: LineageEntity): void => {
     if (typeof entity.source === 'string' && entity.source.length > 0) {
       spans.add(entity.source);
+      const sourceFile = spanFile(entity.source);
+      if (sourceFile !== undefined) files.add(sourceFile);
     }
     for (const record of entity.provenance ?? []) {
       if (record.file === undefined) continue;

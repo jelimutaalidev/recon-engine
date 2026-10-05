@@ -226,7 +226,7 @@ describe('identity builders', () => {
       ...configA,
       timestamp: '2024-01-01T00:00:00.000Z',
     };
-    expect(computeConfigHash(configWithTimestamp)).not.toBe(computeConfigHash(configA));
+    expect(computeConfigHash(configWithTimestamp)).toBe(computeConfigHash(configA));
 
     const reordered: ReconConfig = {
       ...configA,

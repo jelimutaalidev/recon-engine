@@ -37,7 +37,7 @@ export function computeManifestHash(
 }
 
 export function computeConfigHash(config: ReconConfig): string {
-  const { root: _root, includes, excludes, ...rest } = config;
+  const { root: _root, timestamp: _timestamp, includes, excludes, ...rest } = config;
   return stableStringify({
     ...rest,
     includes: [...includes].sort(),

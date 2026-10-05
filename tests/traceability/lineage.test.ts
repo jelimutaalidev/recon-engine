@@ -157,8 +157,16 @@ describe('pipeline traceability wiring', () => {
       }
     }
 
+    const contractsDerivation = traceability.derivations.find(
+      (derivation) => derivation.operation === 'extract.contracts',
+    );
+    expect(contractsDerivation).toBeDefined();
+    expect(contractsDerivation!.inputs.length).toBeGreaterThan(0);
+    expect(contractsDerivation!.inputs.map((ref) => ref.entity_id)).toContain('Vault.sol');
+
     for (const derivation of traceability.derivations) {
       expect(derivation.provenance.length).toBeGreaterThan(0);
+      expect(derivation.inputs.length).toBeGreaterThan(0);
       for (const span of derivation.provenance) {
         const match = /^(.+):(\d+)-(\d+)$/.exec(span);
         expect(match).not.toBeNull();

@@ -10,6 +10,7 @@ import {
   stateVariableId,
 } from '../ids/ids.js';
 import { RELATIONSHIP_TYPES } from '../relationships/types.js';
+import { spanFile } from '../recon/extract/types.js';
 import { relationshipContentId } from '../relationships/relationship.js';
 import { factContentId } from '../epistemic/fact.js';
 import { observationContentId } from '../epistemic/observation.js';
@@ -59,6 +60,25 @@ function collectProvenance(state: ReconState): Provenance[] {
     }
   }
   return [...registry.values()].sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function collectSpanSourceFiles(state: ReconState): Set<string> {
+  const files = new Set<string>();
+  const entities: unknown[] = [
+    ...state.contracts,
+    ...state.functions,
+    ...state.state_variables,
+    ...state.relationships,
+    ...state.facts,
+  ];
+  for (const entity of entities) {
+    if (entity === undefined || entity === null) continue;
+    const source = (entity as { source?: unknown }).source;
+    if (typeof source !== 'string') continue;
+    const file = spanFile(source);
+    if (file !== undefined) files.add(file);
+  }
+  return files;
 }
 
 function sortedIds(records: readonly { id: string }[]): string[] {
@@ -379,6 +399,7 @@ function assertTraceability(state: ReconState): void {
         .map((record) => record.file)
         .filter((file): file is string => file !== undefined),
     );
+    for (const file of collectSpanSourceFiles(state)) sourceFiles.add(file);
     const covered = new Set<string>();
     for (const derivation of traceability.derivations) {
       if (derivation.run_id !== currentRun.id) continue;

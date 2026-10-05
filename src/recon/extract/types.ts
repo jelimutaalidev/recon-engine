@@ -69,6 +69,12 @@ export function spanString(span: Span): string {
   return `${span.file}:${span.lineStart}-${span.lineEnd}`;
 }
 
+const SPAN_PATTERN = /^(.+):(\d+)-(\d+)$/;
+
+export function spanFile(span: string): string | undefined {
+  return SPAN_PATTERN.exec(span)?.[1];
+}
+
 export function patchOf(partial: Partial<StatePatch>): StatePatch {
   return { ...emptyPatch(), ...partial };
 }

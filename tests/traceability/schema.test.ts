@@ -537,6 +537,33 @@ describe('traceability validation', () => {
     ]);
   });
 
+  it('resolves a source input only from an entity source span', () => {
+    const base = buildBase();
+    const contract = base.input.contracts![0]!;
+    const spanOnly: ReconStateInput = {
+      ...base.input,
+      contracts: [{ ...contract, source: 'src/SpanOnly.sol:10-20' }],
+    };
+    const run = runFixture(currentHash(spanOnly));
+    const state = createReconState({
+      ...spanOnly,
+      traceability: {
+        runs: [run],
+        derivations: [
+          derivationFixture({
+            inputs: [{ entity_type: 'source_file', entity_id: 'src/SpanOnly.sol' }],
+            outputs: materialRefs(base.ids),
+          }),
+        ],
+        outputs: outputRecords(RUN_ID, base.ids),
+      },
+    });
+    expect(state.provenance.some((record) => record.file === 'src/SpanOnly.sol')).toBe(false);
+    expect(state.traceability?.derivations[0]?.inputs.map((ref) => ref.entity_id)).toEqual([
+      'src/SpanOnly.sol',
+    ]);
+  });
+
   it('rejects a material entity not covered by current-run derivations', () => {
     const base = buildBase();
     const run = runFixture(currentHash(base.input));

@@ -93,8 +93,7 @@ export function buildState(input: BuildStateInput): ReconState {
 
   const sourceIdentity = computeSourceIdentity(input.files, input.git, basename(input.config.root));
   const compilerIdentity = computeCompilerIdentity(input.solcLongVersion);
-  const { timestamp: _executionTimestamp, ...configForHash } = input.config;
-  const configurationIdentity = { config_hash: computeConfigHash(configForHash) };
+  const configurationIdentity = { config_hash: computeConfigHash(input.config) };
   const manifestPayload: InputManifestPayload = {
     sourceIdentity,
     configHash: configurationIdentity.config_hash,
