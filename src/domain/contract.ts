@@ -20,6 +20,7 @@ const ContractShape = {
   compiler_version: z.string().trim().min(1).optional(),
   is_proxy: z.boolean().optional(),
   is_abstract: z.boolean().optional(),
+  source: z.string().trim().min(1).optional(),
   implementation_id: z.string().regex(ENTITY_ID_PREFIXES.contract).optional(),
   deployment_status: z.string().trim().min(1).optional(),
 } as const;

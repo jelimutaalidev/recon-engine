@@ -154,7 +154,7 @@ function typeFromTypeName(value: unknown): string {
 }
 
 function abiTypeOf(param: Ast, fallback: string): string {
-  const typeString = str(asAst(param.typeDescriptions)?.typeString);
+  const typeString = str(param.typeDescriptions?.typeString);
   if (typeString === undefined) return fallback;
   if (
     typeString.startsWith('contract ') ||
@@ -743,13 +743,18 @@ function buildFunction(node: Ast, env: FunctionEnv): FunctionIR {
   const modifiers = buildModifiers(astList(node.modifiers), content);
   const canonicalSignature = sigFor(kind, name, params.map((param) => param.type));
   let selector: string | undefined;
+  let methodIdentifier: string | undefined;
   if (env.ctx.semantic) {
     const methods = methodIdentifiersFor(env.ctx, env.file, env.contractName);
     if (methods !== undefined) {
       const abiSignature = sigFor(kind, name, abiTypes);
-      selector =
-        methods[canonicalSignature] ??
-        (abiSignature !== canonicalSignature ? methods[abiSignature] : undefined);
+      if (methods[canonicalSignature] !== undefined) {
+        methodIdentifier = canonicalSignature;
+        selector = methods[canonicalSignature];
+      } else if (abiSignature !== canonicalSignature && methods[abiSignature] !== undefined) {
+        methodIdentifier = abiSignature;
+        selector = methods[abiSignature];
+      }
     }
   }
   const bodyEnv: BodyEnv = {
@@ -776,6 +781,7 @@ function buildFunction(node: Ast, env: FunctionEnv): FunctionIR {
     modifiers,
     canonicalSignature,
     ...(selector !== undefined ? { selector } : {}),
+    ...(methodIdentifier !== undefined ? { methodIdentifier } : {}),
     declaredIn: env.contractFqn,
     span: spanOfNode(node, env.file, env.line),
     implemented: bool(node.implemented) ?? body !== undefined,

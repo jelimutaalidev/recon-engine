@@ -76,6 +76,7 @@ export interface FunctionIR {
   modifiers: ModifierInvocationIR[];
   canonicalSignature: string;
   selector?: string;
+  methodIdentifier?: string;
   declaredIn: string;
   span: Span;
   implemented: boolean;
