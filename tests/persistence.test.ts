@@ -145,7 +145,10 @@ describe('migrations', () => {
     const db = openDatabase(':memory:');
     runMigrations(db);
     const rows = db.prepare('SELECT version FROM schema_migrations').all() as { version: string }[];
-    expect(rows.map((row) => row.version)).toEqual(['001_initial.sql']);
+    expect(rows.map((row) => row.version)).toEqual([
+      '001_initial.sql',
+      '002_phase2_extraction_fields.sql',
+    ]);
     const tables = db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
       .all() as { name: string }[];
@@ -176,7 +179,7 @@ describe('migrations', () => {
     runMigrations(db);
     expect(() => runMigrations(db)).not.toThrow();
     const rows = db.prepare('SELECT version FROM schema_migrations').all();
-    expect(rows).toHaveLength(1);
+    expect(rows).toHaveLength(2);
   });
 
   it('rejects a recorded migration whose checksum changed', () => {

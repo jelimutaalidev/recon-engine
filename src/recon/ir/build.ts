@@ -1,7 +1,7 @@
 import type { CompileProjectResult } from '../backend/solc/compile.js';
 import { parsePragmas } from '../backend/solc/versions.js';
 import type { DiscoveredFile } from '../discover.js';
-import type { ReconIssue } from '../issues.js';
+import { createReconIssue, type ReconIssue } from '../issues.js';
 import { lineMap } from './line-map.js';
 import type {
   BaseRef,
@@ -65,6 +65,7 @@ const STATEMENT_TYPES = new Set([
   'ExpressionStatement',
   'ForStatement',
   'IfStatement',
+  'InlineAssembly',
   'InlineAssemblyStatement',
   'PlaceholderStatement',
   'Return',
@@ -232,6 +233,63 @@ interface BuildContext {
   output: CompileProjectResult['output'];
   lineCache: Map<string, LineFn>;
   bufferCache: Map<string, Buffer>;
+  unsupported: Map<string, UnsupportedBucket>;
+}
+
+interface UnsupportedBucket {
+  code: string;
+  message: string;
+  file: string;
+  count: number;
+  lineStart: number;
+  lineEnd: number;
+}
+
+const UNSUPPORTED_SPECS = {
+  struct: { code: 'unsupported_struct_definition', message: 'struct definitions are not modeled' },
+  enum: { code: 'unsupported_enum_definition', message: 'enum definitions are not modeled' },
+  udvt: {
+    code: 'unsupported_udvt_definition',
+    message: 'user-defined value type definitions are not modeled',
+  },
+  assembly: { code: 'unsupported_assembly', message: 'Yul/assembly bodies are not modeled' },
+  tryCatch: { code: 'unsupported_try_catch', message: 'try/catch statements are not modeled' },
+  builtin: { code: 'unsupported_builtin', message: 'msg./block./tx. builtins are not modeled' },
+} as const;
+
+function unsupportedDefinitionSpec(nodeType: string | undefined):
+  | (typeof UNSUPPORTED_SPECS)[keyof Pick<typeof UNSUPPORTED_SPECS, 'struct' | 'enum' | 'udvt'>]
+  | undefined {
+  if (nodeType === 'StructDefinition') return UNSUPPORTED_SPECS.struct;
+  if (nodeType === 'EnumDefinition') return UNSUPPORTED_SPECS.enum;
+  if (nodeType === 'UserDefinedValueTypeDefinition') return UNSUPPORTED_SPECS.udvt;
+  return undefined;
+}
+
+function reportUnsupported(
+  ctx: BuildContext,
+  spec: { code: string; message: string },
+  file: string,
+  line: LineFn,
+  node: Ast,
+): void {
+  const span = spanOfNode(node, file, line);
+  const key = `${spec.code} ${file}`;
+  const existing = ctx.unsupported.get(key);
+  if (existing === undefined) {
+    ctx.unsupported.set(key, {
+      code: spec.code,
+      message: spec.message,
+      file,
+      count: 1,
+      lineStart: span.lineStart,
+      lineEnd: span.lineEnd,
+    });
+    return;
+  }
+  existing.count += 1;
+  existing.lineStart = Math.min(existing.lineStart, span.lineStart);
+  existing.lineEnd = Math.max(existing.lineEnd, span.lineEnd);
 }
 
 function lineFor(file: string, ctx: BuildContext): LineFn {
@@ -365,15 +423,25 @@ function walkLhsDecorations(
   }
 }
 
+function isTypeDefinition(decl: Ast | undefined): boolean {
+  return (
+    decl?.nodeType === 'ContractDefinition' ||
+    decl?.nodeType === 'StructDefinition' ||
+    decl?.nodeType === 'EnumDefinition' ||
+    decl?.nodeType === 'UserDefinedValueTypeDefinition'
+  );
+}
+
 function recordIdentifierCall(identifier: Ast, span: Span, out: BodyOut, env: BodyEnv): void {
   const name = str(identifier.name) ?? '';
   if (BUILTIN_CALLS.has(name)) return;
+  const ref = num(identifier.referencedDeclaration);
+  const decl = ref === undefined ? undefined : env.ctx.declById.get(ref);
+  if (isTypeDefinition(decl)) return;
   if (!env.ctx.semantic) {
     out.callSites.push({ kind: 'internal', span });
     return;
   }
-  const ref = num(identifier.referencedDeclaration);
-  const decl = ref === undefined ? undefined : env.ctx.declById.get(ref);
   if (decl?.nodeType === 'FunctionDefinition' && ref !== undefined) {
     const resolvedRef = resolvedFunctionRef(ref, decl, env.ctx);
     out.callSites.push({
@@ -430,8 +498,11 @@ function recordMemberCall(member: Ast, span: Span, out: BodyOut, env: BodyEnv): 
     decl?.nodeType === 'FunctionDefinition' && ref !== undefined
       ? resolvedFunctionRef(ref, decl, env.ctx)
       : undefined;
+  const visibility = decl?.nodeType === 'FunctionDefinition' ? str(decl.visibility) : undefined;
+  const kind: CallKind =
+    visibility === 'internal' || visibility === 'private' ? 'internal' : 'external';
   out.callSites.push({
-    kind: 'external',
+    kind,
     ...(resolvedRef !== undefined ? { resolvedRef } : {}),
     span,
   });
@@ -542,9 +613,15 @@ function walkExpr(value: unknown, out: BodyOut, env: BodyEnv): void {
       walkExpr(node.baseExpression, out, env);
       walkExpr(node.indexExpression, out, env);
       return;
-    case 'MemberAccess':
+    case 'MemberAccess': {
+      const base = asAst(node.expression);
+      const baseName = base?.nodeType === 'Identifier' ? str(base.name) : undefined;
+      if (baseName === 'msg' || baseName === 'block' || baseName === 'tx') {
+        reportUnsupported(env.ctx, UNSUPPORTED_SPECS.builtin, env.file, env.line, node);
+      }
       walkExpr(node.expression, out, env);
       return;
+    }
     case 'Identifier':
       recordStorageTarget(node, 'read', out, env);
       return;
@@ -644,6 +721,7 @@ function walkStatement(value: unknown, out: BodyOut, env: BodyEnv): void {
       walkRevertStatement(node, out, env);
       return;
     case 'TryStatement': {
+      reportUnsupported(env.ctx, UNSUPPORTED_SPECS.tryCatch, env.file, env.line, node);
       walkExpr(node.expression, out, env);
       for (const clause of astList(node.clauses)) {
         const block = asAst(clause.block);
@@ -651,7 +729,9 @@ function walkStatement(value: unknown, out: BodyOut, env: BodyEnv): void {
       }
       return;
     }
+    case 'InlineAssembly':
     case 'InlineAssemblyStatement':
+      reportUnsupported(env.ctx, UNSUPPORTED_SPECS.assembly, env.file, env.line, node);
       return;
     case 'Break':
     case 'Continue':
@@ -843,6 +923,9 @@ function buildContract(node: Ast, file: string, ctx: BuildContext): ContractIR {
         canonicalSignature: defSignature(member),
         span: spanOfNode(member, file, line),
       });
+    } else {
+      const spec = unsupportedDefinitionSpec(member.nodeType);
+      if (spec !== undefined) reportUnsupported(ctx, spec, file, line, member);
     }
   }
   for (const member of members) {
@@ -887,6 +970,7 @@ export function buildIr(
     output: result.output,
     lineCache: new Map(),
     bufferCache: new Map(),
+    unsupported: new Map(),
   };
   const sources = result.output.sources ?? {};
   for (const [path, entry] of Object.entries(sources)) {
@@ -916,8 +1000,25 @@ export function buildIr(
           canonicalSignature: defSignature(child),
           span: spanOfNode(child, path, line),
         });
+      } else {
+        const spec = unsupportedDefinitionSpec(child.nodeType);
+        if (spec !== undefined) reportUnsupported(ctx, spec, path, line, child);
       }
     }
+  }
+
+  for (const bucket of ctx.unsupported.values()) {
+    issues.push(
+      createReconIssue({
+        severity: 'UNSUPPORTED',
+        code: bucket.code,
+        message: bucket.message,
+        file: bucket.file,
+        line_start: bucket.lineStart,
+        line_end: bucket.lineEnd,
+        count: bucket.count,
+      }),
+    );
   }
 
   const ir: NormalizedProject = {

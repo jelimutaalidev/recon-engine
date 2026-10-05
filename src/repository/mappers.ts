@@ -43,6 +43,8 @@ export interface ContractRow {
   is_proxy: number | null;
   implementation_id: string | null;
   deployment_status: string | null;
+  is_abstract: number | null;
+  source: string | null;
 }
 
 export interface FunctionRow {
@@ -66,6 +68,7 @@ export interface StateVariableRow {
   type: string;
   visibility: string;
   slot: string | null;
+  mutability: string | null;
   source: string | null;
 }
 
@@ -257,6 +260,8 @@ export function contractToRow(contract: Contract): Record<string, RowValue> {
     is_proxy: boolFlag(contract.is_proxy),
     implementation_id: contract.implementation_id ?? null,
     deployment_status: contract.deployment_status ?? null,
+    is_abstract: boolFlag(contract.is_abstract),
+    source: contract.source ?? null,
   };
 }
 
@@ -275,6 +280,8 @@ export function rowToContract(row: ContractRow): Contract {
       is_proxy: optBool(row.is_proxy),
       implementation_id: opt(row.implementation_id),
       deployment_status: opt(row.deployment_status),
+      is_abstract: optBool(row.is_abstract),
+      source: opt(row.source),
     },
     'Contract',
   );
@@ -324,6 +331,7 @@ export function stateVariableToRow(stateVariable: StateVariable): Record<string,
     type: stateVariable.type,
     visibility: stateVariable.visibility,
     slot: stateVariable.slot ?? null,
+    mutability: stateVariable.mutability ?? null,
     source: stateVariable.source ?? null,
   };
 }
@@ -338,6 +346,7 @@ export function rowToStateVariable(row: StateVariableRow): StateVariable {
       type: row.type,
       visibility: row.visibility,
       slot: opt(row.slot),
+      ...(row.mutability !== null ? { mutability: row.mutability as StateVariable['mutability'] } : {}),
       source: opt(row.source),
     },
     'StateVariable',
