@@ -2,6 +2,7 @@ import { ReconError } from '../errors/errors.js';
 import { parseOrThrow } from '../domain/helpers.js';
 import { ReconStateSchema, type ReconState, type ReconStateInput } from './schema.js';
 import { validateReconState } from './validate.js';
+import type { RunOutputRecord } from '../traceability/types.js';
 
 export function createReconState(input: ReconStateInput): ReconState {
   const parsed = parseOrThrow(ReconStateSchema, input, 'ReconState');
@@ -16,8 +17,20 @@ function sortCollection<T extends { id: string }>(items: readonly T[]): T[] {
   return [...items].sort((a, b) => a.id.localeCompare(b.id));
 }
 
-export function serializeReconState(state: ReconState): string {
-  const canonical = {
+function compareOutputs(a: RunOutputRecord, b: RunOutputRecord): number {
+  return (
+    a.run_id.localeCompare(b.run_id) ||
+    a.entity_type.localeCompare(b.entity_type) ||
+    a.entity_id.localeCompare(b.entity_id)
+  );
+}
+
+export function serializeReconState(
+  state: ReconState,
+  options: { omitTraceability?: boolean } = {},
+): string {
+  const omitTraceability = options.omitTraceability ?? false;
+  const canonical: Record<string, unknown> = {
     schema_version: state.schema_version,
     project: state.project,
     contracts: sortCollection(state.contracts),
@@ -34,6 +47,13 @@ export function serializeReconState(state: ReconState): string {
     evidence: sortCollection(state.evidence),
     provenance: sortCollection(state.provenance),
   };
+  if (!omitTraceability && state.traceability !== undefined) {
+    canonical.traceability = {
+      runs: sortCollection(state.traceability.runs),
+      derivations: sortCollection(state.traceability.derivations),
+      outputs: [...state.traceability.outputs].sort(compareOutputs),
+    };
+  }
   return JSON.stringify(canonical, null, 2);
 }
 

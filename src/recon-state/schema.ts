@@ -13,6 +13,7 @@ import { AssumptionSchema } from '../epistemic/assumption.js';
 import { HypothesisSchema } from '../epistemic/hypothesis.js';
 import { EvidenceSchema } from '../epistemic/evidence.js';
 import { ProvenanceSchema } from '../epistemic/provenance.js';
+import { TraceabilitySchema } from '../traceability/types.js';
 
 export const SUPPORTED_SCHEMA_VERSIONS = ['recon-state/v1'] as const;
 
@@ -32,6 +33,7 @@ export const ReconStateSchema = z.strictObject({
   hypotheses: z.array(HypothesisSchema).default([]),
   evidence: z.array(EvidenceSchema).default([]),
   provenance: z.array(ProvenanceSchema).default([]),
+  traceability: TraceabilitySchema.optional(),
 });
 
 export type ReconState = z.infer<typeof ReconStateSchema>;

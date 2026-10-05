@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { ReconError } from '../errors/errors.js';
 import {
   assetId,
@@ -23,6 +24,8 @@ import {
   SUPPORTED_SCHEMA_VERSIONS,
   type ReconState,
 } from './schema.js';
+import { serializeReconState } from './state.js';
+import { MATERIAL_ENTITY_TYPES } from '../traceability/types.js';
 
 const EXPECTED_CONFIDENCE: Record<string, ConfidenceLevel> = {
   FACT: 'VERIFIED',
@@ -309,6 +312,112 @@ function assertReferentialIntegrity(state: ReconState): void {
   }
 }
 
+function duplicateValues(values: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const value of values) {
+    if (seen.has(value)) duplicates.add(value);
+    seen.add(value);
+  }
+  return [...duplicates];
+}
+
+function materialEntities(state: ReconState): Map<string, Set<string>> {
+  return new Map<string, Set<string>>([
+    ['contract', new Set(state.contracts.map((record) => record.id))],
+    ['function', new Set(state.functions.map((record) => record.id))],
+    ['state_variable', new Set(state.state_variables.map((record) => record.id))],
+    ['relationship', new Set(state.relationships.map((record) => record.id))],
+    ['fact', new Set(state.facts.map((record) => record.id))],
+  ]);
+}
+
+function assertTraceability(state: ReconState): void {
+  const traceability = state.traceability;
+  if (traceability === undefined) return;
+
+  const issues: IntegrityIssue[] = [];
+  const add = (source: string, missing: readonly string[]): void => {
+    if (missing.length > 0) {
+      issues.push({ check: 'traceability', source, missing: [...missing] });
+    }
+  };
+
+  add('runs', duplicateValues(traceability.runs.map((run) => run.id)));
+  add(
+    'derivations',
+    duplicateValues(traceability.derivations.map((derivation) => derivation.id)),
+  );
+
+  const runIds = new Set(traceability.runs.map((run) => run.id));
+  for (const derivation of traceability.derivations) {
+    if (!runIds.has(derivation.run_id)) add(derivation.id, [derivation.run_id]);
+  }
+
+  const outputKeys = new Set<string>();
+  const duplicateOutputs: string[] = [];
+  const nonMaterialOutputs: { source: string; entity_type: string }[] = [];
+  const materialTypes = MATERIAL_ENTITY_TYPES as readonly string[];
+  for (const output of traceability.outputs) {
+    const key = `${output.run_id}|${output.entity_type}|${output.entity_id}`;
+    if (outputKeys.has(key)) duplicateOutputs.push(key);
+    outputKeys.add(key);
+    if (!materialTypes.includes(output.entity_type)) {
+      nonMaterialOutputs.push({ source: key, entity_type: output.entity_type });
+    }
+  }
+  add('outputs', duplicateOutputs);
+  for (const entry of nonMaterialOutputs) add(entry.source, [entry.entity_type]);
+
+  const currentHash = createHash('sha256')
+    .update(serializeReconState(state, { omitTraceability: true }), 'utf8')
+    .digest('hex');
+  const currentRun = traceability.runs.find(
+    (run) => run.output_identity?.output_hash === currentHash,
+  );
+  if (currentRun !== undefined) {
+    const material = materialEntities(state);
+    const sourceFiles = new Set(
+      state.provenance
+        .map((record) => record.file)
+        .filter((file): file is string => file !== undefined),
+    );
+    const covered = new Set<string>();
+    for (const derivation of traceability.derivations) {
+      if (derivation.run_id !== currentRun.id) continue;
+      const unresolved: string[] = [];
+      for (const ref of derivation.outputs) {
+        const ids = material.get(ref.entity_type);
+        if (ids !== undefined && ids.has(ref.entity_id)) {
+          covered.add(`${ref.entity_type}|${ref.entity_id}`);
+        } else {
+          unresolved.push(ref.entity_id);
+        }
+      }
+      add(derivation.id, unresolved);
+      add(
+        derivation.id,
+        derivation.inputs
+          .filter((ref) => ref.entity_type === 'source_file' && !sourceFiles.has(ref.entity_id))
+          .map((ref) => ref.entity_id),
+      );
+    }
+    const uncovered: string[] = [];
+    for (const [entityType, ids] of material) {
+      for (const id of ids) {
+        if (!covered.has(`${entityType}|${id}`)) uncovered.push(id);
+      }
+    }
+    add(currentRun.id, uncovered);
+  }
+
+  if (issues.length > 0) {
+    throw new ReconError('InvalidReconState', 'ReconState traceability validation failed', {
+      issues,
+    });
+  }
+}
+
 export function validateReconState(
   state: ReconState,
   options: { provenanceProvided: boolean },
@@ -330,5 +439,6 @@ export function validateReconState(
   assertEpistemicRules(normalized);
   assertContentIds(normalized);
   assertReferentialIntegrity(normalized);
+  assertTraceability(normalized);
   return normalized;
 }
