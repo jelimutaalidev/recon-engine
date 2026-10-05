@@ -50,11 +50,9 @@ contract Vault is Base {
     helper();
     this.bump(1);
     other.bump(2);
-    Vault v = new Vault();
-    v.bump(3);
     (bool ok, ) = target.call{value: 1}("");
-    ok = target.delegatecall("");
-    ok = target.staticcall("");
+    (ok, ) = target.delegatecall("");
+    (ok, ) = target.staticcall("");
     function (uint256) internal pure returns (uint256) fp = twice;
     fp(2);
   }
@@ -70,6 +68,10 @@ contract Vault is Base {
 }
 
 interface IVault { function deposit() external; }
+
+contract Factory {
+  function build() external returns (Vault) { return new Vault(); }
+}
 
 library Lib { function twice(uint256 a) internal pure returns (uint256) { return a; } }
 
@@ -167,11 +169,11 @@ describe('buildIr (semantic)', () => {
       declaredIn: 'Repo.sol:Vault',
     });
     expect(stamp?.mutability).toBe('immutable');
-    expect(stamp?.slot).toBe('2');
+    expect(stamp?.slot).toBeUndefined();
     expect(cap?.mutability).toBe('constant');
     expect(cap?.slot).toBeUndefined();
     expect(balances?.type).toBe('mapping(address => uint256)');
-    expect(balances?.slot).toBe('3');
+    expect(balances?.slot).toBe('2');
     expect(counter).toMatchObject({ mutability: 'mutable', slot: '0', declaredIn: 'Repo.sol:Base' });
     expect(vault?.stateVars.some((variable) => variable.name === 'counter')).toBe(false);
   });
@@ -206,7 +208,7 @@ describe('buildIr (semantic)', () => {
     expect(relay?.canonicalSignature).toBe('relay(Vault)');
     expect(relay?.selector).toBeUndefined();
 
-    const overloaded = vault?.functions.filter((fn) => fn.name === 'overloaded');
+    const overloaded = vault?.functions.filter((fn) => fn.name === 'overloaded') ?? [];
     expect(overloaded).toHaveLength(2);
     const selectors = overloaded.map((fn) => fn.selector);
     expect(selectors[0]).toMatch(/^[0-9a-f]{8}$/);
@@ -226,15 +228,13 @@ describe('buildIr (semantic)', () => {
       'internal',
       'self-external',
       'external',
-      'new',
-      'external',
       'lowlevel',
       'delegatecall',
       'staticcall',
       'indirect',
     ]);
 
-    const [internal, selfExternal, external, created, external2, lowlevel, delegate, staticc, indirect] =
+    const [internal, selfExternal, external, lowlevel, delegate, staticc, indirect] =
       allCalls?.callSites ?? [];
     expect(internal?.resolvedRef).toEqual({
       fqn: 'Repo.sol:Vault',
@@ -243,16 +243,20 @@ describe('buildIr (semantic)', () => {
     });
     expect(selfExternal?.resolvedRef?.signature).toBe('bump(uint256)');
     expect(external?.resolvedRef?.fqn).toBe('Repo.sol:Vault');
-    expect(created?.resolvedRef).toEqual({
-      fqn: 'Repo.sol:Vault',
-      signature: 'constructor()',
-      nodeType: 'FunctionDefinition',
-    });
-    expect(external2?.resolvedRef?.signature).toBe('bump(uint256)');
     expect(lowlevel?.resolvedRef).toBeUndefined();
     expect(delegate?.resolvedRef).toBeUndefined();
     expect(staticc?.resolvedRef).toBeUndefined();
     expect(indirect?.resolvedRef).toBeUndefined();
+
+    const build = ir.contracts
+      .find((contract) => contract.name === 'Factory')
+      ?.functions.find((fn) => fn.name === 'build');
+    expect(build?.callSites).toHaveLength(1);
+    expect(build?.callSites[0]).toEqual({
+      kind: 'new',
+      resolvedRef: { fqn: 'Repo.sol:Vault', signature: 'constructor()', nodeType: 'FunctionDefinition' },
+      span: expect.objectContaining({ file: 'Repo.sol' }),
+    });
 
     const bump = vault?.functions.find((fn) => fn.name === 'bump');
     const superCall = bump?.callSites.find((site) => site.kind === 'super');
