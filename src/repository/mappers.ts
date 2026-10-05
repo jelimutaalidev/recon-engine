@@ -15,6 +15,14 @@ import { HypothesisSchema, type Hypothesis } from '../epistemic/hypothesis.js';
 import { EvidenceSchema, type Evidence } from '../epistemic/evidence.js';
 import { ProvenanceSchema, type Provenance } from '../epistemic/provenance.js';
 import type { Confidence, ConfidenceLevel } from '../epistemic/confidence.js';
+import {
+  DerivationSchema,
+  ReconRunSchema,
+  RunOutputRecordSchema,
+  type Derivation,
+  type ReconRun,
+  type RunOutputRecord,
+} from '../traceability/types.js';
 
 export type RowValue = string | number | null;
 
@@ -169,6 +177,40 @@ export interface EvidenceRow {
   evidence_type: string;
   description: string;
   created_at: string;
+}
+
+export interface RunRow {
+  id: string;
+  project_id: string;
+  schema_version: string;
+  analyzer_version: string;
+  started_at: string;
+  completed_at: string | null;
+  status: string;
+  source_identity: string;
+  compiler_identity: string;
+  configuration_identity: string;
+  input_manifest_hash: string;
+  output_identity: string | null;
+}
+
+export interface DerivationRow {
+  id: string;
+  run_id: string;
+  operation: string;
+  operation_version: string;
+  inputs: string;
+  outputs: string;
+  provenance: string;
+  status: string;
+  metadata: string | null;
+}
+
+export interface RunOutputRow {
+  run_id: string;
+  entity_type: string;
+  entity_id: string;
+  content_hash: string;
 }
 
 function opt<T>(value: T | null): T | undefined {
@@ -653,5 +695,97 @@ export function rowToEvidence(
       created_at: row.created_at,
     },
     'Evidence',
+  );
+}
+
+export function runToRow(run: ReconRun): Record<string, RowValue> {
+  return {
+    id: run.id,
+    project_id: run.project_id,
+    schema_version: run.schema_version,
+    analyzer_version: run.analyzer_version,
+    started_at: run.started_at,
+    completed_at: run.completed_at ?? null,
+    status: run.status,
+    source_identity: JSON.stringify(run.source_identity),
+    compiler_identity: JSON.stringify(run.compiler_identity),
+    configuration_identity: JSON.stringify(run.configuration_identity),
+    input_manifest_hash: run.input_manifest_hash,
+    output_identity: run.output_identity === undefined ? null : JSON.stringify(run.output_identity),
+  };
+}
+
+export function rowToRun(row: RunRow): ReconRun {
+  return parseOrThrow(
+    ReconRunSchema,
+    {
+      id: row.id,
+      project_id: row.project_id,
+      schema_version: row.schema_version,
+      analyzer_version: row.analyzer_version,
+      started_at: row.started_at,
+      completed_at: opt(row.completed_at),
+      status: row.status,
+      source_identity: parseJson(row.source_identity),
+      compiler_identity: parseJson(row.compiler_identity),
+      configuration_identity: parseJson(row.configuration_identity),
+      input_manifest_hash: row.input_manifest_hash,
+      output_identity: row.output_identity === null ? undefined : parseJson(row.output_identity),
+    },
+    'ReconRun',
+  );
+}
+
+export function derivationToRow(derivation: Derivation): Record<string, RowValue> {
+  return {
+    id: derivation.id,
+    run_id: derivation.run_id,
+    operation: derivation.operation,
+    operation_version: derivation.operation_version,
+    inputs: JSON.stringify(derivation.inputs),
+    outputs: JSON.stringify(derivation.outputs),
+    provenance: JSON.stringify(derivation.provenance),
+    status: derivation.status,
+    metadata: derivation.metadata === undefined ? null : JSON.stringify(derivation.metadata),
+  };
+}
+
+export function rowToDerivation(row: DerivationRow): Derivation {
+  return parseOrThrow(
+    DerivationSchema,
+    {
+      id: row.id,
+      run_id: row.run_id,
+      operation: row.operation,
+      operation_version: row.operation_version,
+      inputs: parseJson(row.inputs),
+      outputs: parseJson(row.outputs),
+      provenance: parseJson(row.provenance),
+      status: row.status,
+      metadata: row.metadata === null ? undefined : parseJson(row.metadata),
+    },
+    'Derivation',
+  );
+}
+
+export function runOutputToRow(output: RunOutputRecord): Record<string, RowValue> {
+  return {
+    run_id: output.run_id,
+    entity_type: output.entity_type,
+    entity_id: output.entity_id,
+    content_hash: output.content_hash,
+  };
+}
+
+export function rowToRunOutput(row: RunOutputRow): RunOutputRecord {
+  return parseOrThrow(
+    RunOutputRecordSchema,
+    {
+      run_id: row.run_id,
+      entity_type: row.entity_type,
+      entity_id: row.entity_id,
+      content_hash: row.content_hash,
+    },
+    'RunOutputRecord',
   );
 }

@@ -17,12 +17,19 @@ import type { Evidence } from '../epistemic/evidence.js';
 import type { Provenance } from '../epistemic/provenance.js';
 import { createReconState } from '../recon-state/state.js';
 import type { ReconState, ReconStateInput } from '../recon-state/schema.js';
+import type {
+  Derivation,
+  ReconRun,
+  RunOutputRecord,
+  TraceabilityState,
+} from '../traceability/types.js';
 import type { ReconRepository } from './interface.js';
 import {
   assumptionToRow,
   assetToRow,
   contractToRow,
   dependencyToRow,
+  derivationToRow,
   evidenceToRow,
   factToRow,
   functionToRow,
@@ -35,6 +42,7 @@ import {
   rowToAsset,
   rowToContract,
   rowToDependency,
+  rowToDerivation,
   rowToEvidence,
   rowToFact,
   rowToFunction,
@@ -44,13 +52,18 @@ import {
   rowToProvenance,
   rowToRelationship,
   rowToRole,
+  rowToRun,
+  rowToRunOutput,
   rowToStateVariable,
   roleToRow,
+  runOutputToRow,
+  runToRow,
   stateVariableToRow,
   type AssumptionRow,
   type AssetRow,
   type ContractRow,
   type DependencyRow,
+  type DerivationRow,
   type EvidenceRow,
   type FactRow,
   type FunctionRow,
@@ -61,6 +74,8 @@ import {
   type RelationshipRow,
   type RoleRow,
   type RowValue,
+  type RunOutputRow,
+  type RunRow,
   type StateVariableRow,
 } from './mappers.js';
 
@@ -112,6 +127,13 @@ function stripVolatile(entity: object): Record<string, unknown> {
   const { created_at: _created, updated_at: _updated, ...rest } =
     entity as Record<string, unknown>;
   return rest;
+}
+
+function stripRunExecution(
+  run: ReconRun,
+): Omit<ReconRun, 'started_at' | 'completed_at' | 'status'> {
+  const { started_at: _started, completed_at: _completed, status: _status, ...identity } = run;
+  return identity;
 }
 
 export class SqliteReconRepository implements ReconRepository {
@@ -506,6 +528,7 @@ export class SqliteReconRepository implements ReconRepository {
       for (const assumption of state.assumptions) this.createAssumption(assumption);
       for (const hypothesis of state.hypotheses) this.createHypothesis(hypothesis);
       for (const evidence of state.evidence) this.createEvidence(evidence);
+      if (state.traceability !== undefined) this.persistTraceability(state.traceability);
       this.setMeta('state_saved_at', new Date().toISOString());
       this.setMeta('schema_version', state.schema_version);
     })();
@@ -544,6 +567,13 @@ export class SqliteReconRepository implements ReconRepository {
     const evidenceRows = this.db
       .prepare('SELECT * FROM evidence ORDER BY id')
       .all() as EvidenceRow[];
+    const runRows = this.db.prepare('SELECT * FROM runs ORDER BY id').all() as RunRow[];
+    const derivationRows = this.db
+      .prepare('SELECT * FROM derivations ORDER BY id')
+      .all() as DerivationRow[];
+    const runOutputRows = this.db
+      .prepare('SELECT * FROM run_outputs ORDER BY run_id, entity_type, entity_id')
+      .all() as RunOutputRow[];
 
     const input: ReconStateInput = {
       schema_version: this.getMeta('schema_version') ?? 'recon-state/v1',
@@ -593,6 +623,13 @@ export class SqliteReconRepository implements ReconRepository {
       ),
     };
     if (projectRow !== undefined) input.project = rowToProject(projectRow);
+    if (runRows.length > 0) {
+      input.traceability = {
+        runs: runRows.map(rowToRun),
+        derivations: derivationRows.map(rowToDerivation),
+        outputs: runOutputRows.map(rowToRunOutput),
+      };
+    }
     return createReconState(input);
   }
 
@@ -628,6 +665,52 @@ export class SqliteReconRepository implements ReconRepository {
       }
       this.insertRow('provenance', provenanceToRow(record));
     }
+  }
+
+  private persistTraceability(traceability: TraceabilityState): void {
+    for (const run of traceability.runs) this.persistRun(run);
+    for (const derivation of traceability.derivations) this.persistDerivation(derivation);
+    for (const output of traceability.outputs) this.persistRunOutput(output);
+  }
+
+  private persistRun(run: ReconRun): void {
+    const existing = this.findRow('runs', run.id) as RunRow | undefined;
+    if (existing === undefined) {
+      this.insertRow('runs', runToRow(run));
+      return;
+    }
+    const current = rowToRun(existing);
+    this.assertSameContent(stripRunExecution(current), stripRunExecution(run), 'Run', run.id);
+    this.db
+      .prepare('UPDATE runs SET started_at = ?, completed_at = ?, status = ? WHERE id = ?')
+      .run(run.started_at, run.completed_at ?? null, run.status, run.id);
+  }
+
+  private persistDerivation(derivation: Derivation): void {
+    const existing = this.findRow('derivations', derivation.id) as DerivationRow | undefined;
+    if (existing !== undefined) {
+      this.assertSameContent(rowToDerivation(existing), derivation, 'Derivation', derivation.id);
+      return;
+    }
+    this.insertRow('derivations', derivationToRow(derivation));
+  }
+
+  private persistRunOutput(output: RunOutputRecord): void {
+    const existing = this.db
+      .prepare(
+        'SELECT * FROM run_outputs WHERE run_id = ? AND entity_type = ? AND entity_id = ?',
+      )
+      .get(output.run_id, output.entity_type, output.entity_id) as RunOutputRow | undefined;
+    if (existing !== undefined) {
+      this.assertSameContent(
+        rowToRunOutput(existing),
+        output,
+        'RunOutputRecord',
+        `${output.run_id}|${output.entity_type}|${output.entity_id}`,
+      );
+      return;
+    }
+    this.insertRow('run_outputs', runOutputToRow(output));
   }
 
   private insertProvenanceLinks(

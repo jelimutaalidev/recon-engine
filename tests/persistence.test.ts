@@ -148,6 +148,7 @@ describe('migrations', () => {
     expect(rows.map((row) => row.version)).toEqual([
       '001_initial.sql',
       '002_phase2_extraction_fields.sql',
+      '003_traceability.sql',
     ]);
     const tables = db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -169,6 +170,9 @@ describe('migrations', () => {
       'hypotheses',
       'evidence',
       'meta',
+      'runs',
+      'derivations',
+      'run_outputs',
     ]) {
       expect(names.has(expected)).toBe(true);
     }
@@ -179,7 +183,7 @@ describe('migrations', () => {
     runMigrations(db);
     expect(() => runMigrations(db)).not.toThrow();
     const rows = db.prepare('SELECT version FROM schema_migrations').all();
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(3);
   });
 
   it('rejects a recorded migration whose checksum changed', () => {
