@@ -255,10 +255,33 @@ TDD (failing test first). Vitest, coverage >= 80% on `src/recon/**`.
 
 - Events/custom errors are LOSSY facts (no entities).
 - Modifier definitions/bodies out of scope (invocations only).
-- Enum/struct/UDVT definitions not modeled (IR-level only).
+- Enum/struct/UDVT definitions are not modeled as entities; they surface as
+  aggregated `UNSUPPORTED` issues (`unsupported_struct_definition`,
+  `unsupported_enum_definition`, `unsupported_udvt_definition`), never facts.
+- Out-of-model constructs surface as aggregated `UNSUPPORTED` issues instead of
+  being silently dropped: assembly (`unsupported_assembly`), try/catch
+  (`unsupported_try_catch`), `msg./block./tx.` member accesses
+  (`unsupported_builtin`). Counts and line ranges are bucketed per
+  (code, file). `require/revert` and other lowercase builtins are silently
+  skipped as call sites (no issue, no fact).
+- An identifier in call position that resolves to a type definition
+  (contract/struct/enum/UDVT — e.g. `ITarget(addr)`, `Info(x, y)`) is an
+  explicit conversion, not a call site, and yields no call site at all. UDVT
+  `.wrap`/`.unwrap` are not recognized specially and may surface as an
+  `unresolved_indirect_call` UNKNOWN marker — conservative, never a claim.
+- Member-call `call_kind` is derived from callee visibility (`internal`/
+  `private` -> `internal`, otherwise `external`) — compiler evidence, not name
+  matching. Member calls whose callee cannot be resolved become
+  `unresolved_indirect_call` UNKNOWN markers (no edge).
+- Storage accesses resolve through AST `referencedDeclaration` to the
+  *declaring* contract. If that contract lies outside the compiled source set,
+  the access becomes an outside/unresolved issue, not an edge. The syntactic
+  fallback (parse-only compile) records storage accesses without resolution and
+  therefore produces markers/issues only — never edges.
+- Merged edges (same source+target, different call kinds) keep the kind of the
+  first recorded site.
 - Single solc version per analysis run (multi-version batches future work).
 - Entity line ranges are string-encoded (`file:lines`), structured lines only on
   facts/relationships; no column precision.
-- `require/revert` messages, msg./block. builtins, assembly: out of model.
 - Incremental (per-file cache) not implemented; sha256 recorded as groundwork.
 - Semantic contract classification (vault/token/proxy...) deferred to future analyzers.

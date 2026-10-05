@@ -21,7 +21,7 @@ Phase-1 factories -> sort -> validateReconState -> `{state, issues}`.
 - [x] Task 4: discover/security (8 tests)
 - [x] Task 5: versions/pragma (29 tests)
 - [x] Task 6: compileProject ladder (8 tests) — 248/248 green, tsc clean
-- [ ] Tasks 7-12 pending
+- [x] Tasks 7-12 complete — 309/309 green, tsc clean
 
 ## Global Constraints
 
@@ -44,9 +44,9 @@ Test: `tests/recon/schema-d1-d2.test.ts`.
 
 **Interfaces:** `createContract({..., is_abstract: true})` -> Contract; `createStateVariable({..., mutability: 'immutable'})` -> StateVariable. Unknown enum value -> `ReconError SchemaValidationFailed`.
 
-- [ ] Failing tests: accept `is_abstract:false`; accept each `mutability` value; reject `mutability:'const'`; strictObject still rejects unknown keys.
-- [ ] Implement, run `npx vitest run tests/recon/schema-d1-d2.test.ts` PASS.
-- [ ] Run full `npm test` (Phase 1 green).
+- [x] Failing tests: accept `is_abstract:false`; accept each `mutability` value; reject `mutability:'const'`; strictObject still rejects unknown keys.
+- [x] Implement, run `npx vitest run tests/recon/schema-d1-d2.test.ts` PASS.
+- [x] Run full `npm test` (Phase 1 green).
 
 ### Task 2: D3 source contract identity
 
@@ -63,8 +63,8 @@ sourceContractId(sourceFile: string, name: string): string
 ```
 Approved example uses lowercased name segment: `contract:<normalized-file>:<lowercase-name>`.
 
-- [ ] Failing tests: path normalization cases (`src/Vault.sol`, `lib/oz@4.8/Core.sol`, `a\\b.sol` windows sep), address precedence with source_file, validate passes for source contract, duplicate normalized id -> `DuplicateCanonicalEntity`.
-- [ ] Implement; `npx vitest run tests/recon/ids-d3.test.ts` PASS; full `npm test` green.
+- [x] Failing tests: path normalization cases (`src/Vault.sol`, `lib/oz@4.8/Core.sol`, `a\\b.sol` windows sep), address precedence with source_file, validate passes for source contract, duplicate normalized id -> `DuplicateCanonicalEntity`.
+- [x] Implement; `npx vitest run tests/recon/ids-d3.test.ts` PASS; full `npm test` green.
 
 ### Task 3: config + issues + timestamp
 
@@ -85,8 +85,8 @@ resolveTimestamp(config): Promise<{ timestamp: string; source: 'config'|'git'|'e
 Epoch fallback: `1970-01-01T00:00:00Z`. Git = `execFile('git', [...])` fixed args, no shell, only when
 `git rev-parse --show-toplevel` equals realpath(root).
 
-- [ ] Failing tests: defaults, invalid root type, timestamp priority config>git>epoch (temp dirs: non-git dir -> epoch), git-root mismatch -> epoch.
-- [ ] Implement -> PASS.
+- [x] Failing tests: defaults, invalid root type, timestamp priority config>git>epoch (temp dirs: non-git dir -> epoch), git-root mismatch -> epoch.
+- [x] Implement -> PASS.
 
 ### Task 4: source discovery (security boundary)
 
@@ -102,8 +102,8 @@ size cap (issue RECOVERABLE `file_too_large`, skip); count cap (FATAL `too_many_
 path jail: reject `..`, symlink escape (realpath must stay under realpath(root)) -> FATAL `path_escape`;
 read failures -> RECOVERABLE skip. sha256 via node:crypto over bytes.
 
-- [ ] Failing tests: traversal (`../`), absolute path outside root, symlink escape (junction/symlink dir), oversized skip+issue, count cap, sorted order, sha256 correct, 0 files -> FATAL `no_sources`.
-- [ ] Implement -> PASS.
+- [x] Failing tests: traversal (`../`), absolute path outside root, symlink escape (junction/symlink dir), oversized skip+issue, count cap, sorted order, sha256 correct, 0 files -> FATAL `no_sources`.
+- [x] Implement -> PASS.
 
 ### Task 5: compiler versions (pragma + pin + cache)
 
@@ -122,9 +122,9 @@ verifyChecksum(listJsonSha256: string, bytes: Buffer): boolean
 - Download: https only `binaries.soliditylang.org/bin/list.json`, sha256 verify, `cache-only` never
   touches network (FATAL `compiler_unavailable`).
 
-- [ ] Failing tests: pragma parsing (multi pragma, spaces), satisfies matrix, selection highest-common,
+- [x] Failing tests: pragma parsing (multi pragma, spaces), satisfies matrix, selection highest-common,
   conflict FATAL, checksum tamper FATAL, cache-only without cache FATAL.
-- [ ] Implement -> PASS (no network needed in tests: bundled + fake cache dirs).
+- [x] Implement -> PASS (no network needed in tests: bundled + fake cache dirs).
 
 ### Task 6: compile + SolcBackend
 
@@ -146,11 +146,11 @@ ParseResult = { ir: NormalizedProject; issues: ReconIssue[] }
 - solc-js uses bundled `soljson` when selected version == package version; `loadRemoteVersion` +
   disk cache otherwise (network only in auto mode).
 
-- [ ] Failing tests: live compile of tiny fixture (semantic fidelity, ast present, methodIdentifiers
+- [x] Failing tests: live compile of tiny fixture (semantic fidelity, ast present, methodIdentifiers
   present, storageLayout present), broken-semantic fixture -> syntactic retry success + issue,
   syntax-broken fixture -> RECOVERABLE drop, import escaping root -> dropped+FATAL policy,
   output ordering deterministic.
-- [ ] Implement -> PASS.
+- [x] Implement -> PASS.
 
 ### Task 7: normalized IR + builder
 
@@ -175,11 +175,11 @@ lineMap(content: Buffer): (byteOffset: number) => number   // UTF-8 byte-accurat
   `new` (NewExpression) -> new (target constructor ref); indirect (function-typed var) -> UNKNOWN marker.
 - `fidelity:'syntactic'` -> referencedDeclaration may be missing: keep CallSite with `resolvedRef: undefined`.
 
-- [ ] Failing tests: byte->line mapping incl. multibyte before span; contract/function/statevar IR;
+- [x] Failing tests: byte->line mapping incl. multibyte before span; contract/function/statevar IR;
   selector from methodIdentifiers; canonical internal signature normalization (strip `contract `);
   call-kind classification matrix; storage ops (assign/compound/++/mapping root/read);
   syntactic mode leaves resolvedRef undefined.
-- [ ] Implement -> PASS.
+- [x] Implement -> PASS.
 
 ### Task 8: entity extractors (contracts, functions, state vars, inheritance, modifiers)
 
@@ -204,10 +204,10 @@ type Extractor = (ctx: { ir: NormalizedProject; config: ReconConfig; provenance:
 - every relationship gets >=1 source_code provenance (file+lines from span; repository/commit from
   git context when available).
 
-- [ ] Failing tests per rule (incl. abstract direct-from-AST, interface->interface classification,
+- [x] Failing tests per rule (incl. abstract direct-from-AST, interface->interface classification,
   internal function has no selector, constructor signature, modifier args text collapsed, diamond
   inheritance edges, interface base -> IMPLEMENTS).
-- [ ] Implement -> PASS.
+- [x] Implement -> PASS.
 
 ### Task 9: call/storage/event-error extractors (UNKNOWN discipline)
 
@@ -226,11 +226,11 @@ Test: `tests/recon/extract-calls.test.ts`, `tests/recon/extract-unknown.test.ts`
   `USES` facts `custom-error:<signature>`; require/revert strings skipped.
 - syntactic mode: no semantic relationships from names -> all call sites unresolved markers.
 
-- [ ] Failing tests: call-kind matrix via live-compiled fixture; `this`/`super`/`new` targets;
+- [x] Failing tests: call-kind matrix via live-compiled fixture; `this`/`super`/`new` targets;
   delegatecall marker + issue; abi.encodeWithSignature call -> lowlevel marker, NO fuzzy match even
   when matching signature exists in repo; compound storage read+write; EMITS fact provenance line;
   custom-error fact; syntactic fixture produces zero CALLS edges.
-- [ ] Implement -> PASS.
+- [x] Implement -> PASS.
 
 ### Task 10: assembly + analyzeProject entry
 
@@ -248,10 +248,10 @@ analyzeProject(config: ReconConfig): Promise<AnalysisResult>
   validator derives) -> FATAL on validation failure (bug).
 - issues sorted (severity, code, file, line) before return.
 
-- [ ] Failing tests: end-to-end fixture returns validate-clean state; project created_at deterministic;
+- [x] Failing tests: end-to-end fixture returns validate-clean state; project created_at deterministic;
   two runs byte-identical `serializeReconState`; shuffled discovery (reversed include order) identical;
   `createReconState`-derived provenance registry exact.
-- [ ] Implement -> PASS.
+- [x] Implement -> PASS.
 
 ### Task 11: persistence idempotency + Vault E2E + security/error matrix
 
@@ -268,17 +268,17 @@ analyzeProject(config: ReconConfig): Promise<AnalysisResult>
   (Task 5 units), cache-only, malformed Solidity, partial compilation failure -> RECOVERABLE.
 - error matrix: >=1 test per FATAL/RECOVERABLE/UNKNOWN/UNSUPPORTED class.
 
-- [ ] Implement tests -> PASS.
+- [x] Implement tests -> PASS.
 
 ### Task 12: verification + documentation
 
-- [ ] `npm test` (full suite incl. Phase 1) PASS.
-- [ ] `npx tsc --noEmit` clean.
-- [ ] Coverage: `npx vitest run --coverage` (add `@vitest/coverage-v8` dev dep if missing) —
+- [x] `npm test` (full suite incl. Phase 1) PASS.
+- [x] `npx tsc --noEmit` clean.
+- [x] Coverage: `npx vitest run --coverage` (add `@vitest/coverage-v8` dev dep if missing) —
   `src/recon/**` >= 80%.
-- [ ] Determinism + idempotency results captured.
-- [ ] Update `docs/recon-layer-design.md` "Known limitations" + add `docs/phase2-dod.md` evidence
+- [x] Determinism + idempotency results captured.
+- [x] Update `docs/recon-layer-design.md` "Known limitations" + add `docs/phase2-dod.md` evidence
   (test counts, coverage, results) mirroring Phase-1 DoD doc style.
-- [ ] Fabrication review: grep for name-matching heuristics, `new Date(`, `Math.random`, unprovenanced
+- [x] Fabrication review: grep for name-matching heuristics, `new Date(`, `Math.random`, unprovenanced
   relationship/fact construction; confirm NONE.
-- [ ] Report 16-point summary to user.
+- [x] Report 16-point summary to user.

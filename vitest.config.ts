@@ -4,5 +4,10 @@ export default defineConfig({
   test: {
     include: ['tests/**/*.test.ts'],
     environment: 'node',
+    coverage: {
+      provider: 'v8',
+      include: ['src/recon/**/*.ts'],
+      reporter: ['text-summary', 'json-summary'],
+    },
   },
 });
