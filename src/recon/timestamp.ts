@@ -11,7 +11,7 @@ export interface ResolvedTimestamp {
   issue?: ReconIssue | undefined;
 }
 
-function runGit(root: string, args: readonly string[]): string {
+export function runGit(root: string, args: readonly string[]): string {
   return execFileSync('git', ['-C', root, ...args], {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -20,7 +20,7 @@ function runGit(root: string, args: readonly string[]): string {
   });
 }
 
-function normalizePathForCompare(path: string): string {
+export function normalizePathForCompare(path: string): string {
   const real = realpathSync(path);
   return real.replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
 }
@@ -38,6 +38,15 @@ function readGitHeadTime(root: string): string | undefined {
     return parsed.toISOString();
   } catch {
     return undefined;
+  }
+}
+
+export function gitToplevelMatches(root: string): boolean {
+  try {
+    const toplevel = runGit(root, ['rev-parse', '--show-toplevel']).trim();
+    return normalizePathForCompare(toplevel) === normalizePathForCompare(root);
+  } catch {
+    return false;
   }
 }
 
