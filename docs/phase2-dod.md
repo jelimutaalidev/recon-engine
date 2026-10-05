@@ -23,7 +23,9 @@ multi-version compiler batches.
 src/recon/
   index.ts        analyzeProject entry (resolve timestamp/git -> buildState)
   build.ts        resolveGitContext/resolveProjectRepository/buildState
+  git.ts          runGit, gitToplevelMatches, path normalization
   timestamp.ts    timestamp priority (config > git > epoch), git root matching
+  issue-buckets.ts shared per-(code,file) issue aggregation + flush
   config.ts       AnalysisConfig (root, limits, cache-only, recordGit, ...)
   issues.ts       ReconIssue model, severity classes, sortIssues
   discover.ts     source discovery (traversal/symlink/size/count guards)
@@ -43,24 +45,24 @@ migrations/       001_initial.sql, 002_phase2_extraction_fields.sql
 |---|---|---|
 | 1 | `analyzeProject(config)` works; state passes `validateReconState` | `src/recon/index.ts`, `tests/recon/analyze.test.ts` (5), `tests/recon/vault-e2e.test.ts` (9) |
 | 2 | D1-D3 implemented exactly as approved | `tests/recon/schema-d1-d2.test.ts` (9), `tests/recon/ids-d3.test.ts` (12) |
-| 3 | Extraction coverage (contracts, function kinds, selectors, state vars + slots, INHERITS/IMPLEMENTS, calls, READS/WRITES, modifier invocations) | `tests/recon/ir-build.test.ts` (9), `tests/recon/extract-entities.test.ts` (15), `tests/recon/extract-calls.test.ts` (6), `tests/recon/extract-unknown.test.ts` (3), `tests/recon/vault-e2e.test.ts` |
+| 3 | Extraction coverage (contracts, function kinds, selectors incl. struct/UDVT params, state vars + slots, INHERITS/IMPLEMENTS, calls, READS/WRITES, modifier invocations) | `tests/recon/ir-build.test.ts` (9), `tests/recon/extract-entities.test.ts` (15), `tests/recon/extract-calls.test.ts` (6), `tests/recon/extract-unknown.test.ts` (3), `tests/recon/vault-e2e.test.ts` |
 | 4 | Provenance complete for every generated fact/relationship (never fabricated) | `createFact`/`createRelationship` enforce >=1 provenance structurally (`MissingProvenance`); every extractor passes `file`+`lines` spans; fabrication review below |
 | 5 | UNKNOWN handled conservatively; syntactic fallback cannot fabricate semantics | `tests/recon/extract-unknown.test.ts`, `tests/recon/extract-calls.test.ts` (markers only, `fidelity='semantic'` asserted), `tests/recon/error-matrix.test.ts` |
-| 6 | All four error classes tested; untrusted-repo security suite passes | `tests/recon/error-matrix.test.ts` (4: FATAL/RECOVERABLE/UNKNOWN/UNSUPPORTED), `tests/recon/security.test.ts` (8), `tests/recon/backend-versions.test.ts` (29) |
+| 6 | All four error classes tested; untrusted-repo security suite passes | `tests/recon/error-matrix.test.ts` (4: FATAL/RECOVERABLE/UNKNOWN/UNSUPPORTED), `tests/recon/security.test.ts` (9 incl. absolute-escape), `tests/recon/backend-versions.test.ts` (29) |
 | 7 | Determinism (byte-identical) and persistence idempotency pass | `tests/recon/analyze.test.ts` (two runs -> identical `stateJson`), `tests/recon/idempotency.test.ts` (2: saveState twice, loadState round-trip byte-identical on a fresh sqlite file) |
-| 8 | Phase 1 tests stay green; tsc clean; coverage target met; Vault E2E passes | 309/309 across 23 files; `npx tsc --noEmit` clean; `src/recon/**` statements 84.63% / lines 87.22% (target >= 80%); `tests/recon/vault-e2e.test.ts` (9) |
+| 8 | Phase 1 tests stay green; tsc clean; coverage target met; Vault E2E passes | 312/312 across 23 files; `npx tsc --noEmit` clean; `src/recon/**` statements 83.78% / lines 86.59% (target >= 80%); `tests/recon/vault-e2e.test.ts` (9) |
 | 9 | Documentation reflects the actual implementation and its limitations | `docs/recon-layer-design.md` §12 updated to actual behavior; this document; `.superpowers/sdd/2026-10-03-recon-layer/progress.md` rulings log |
 
 ## Verification results (Task 12 run)
 
 ```
-npm test           # 309 passed (23 files) — Phase 1: 169, Phase 2: 140
+npm test           # 312 passed (23 files) — Phase 1: 169, Phase 2: 143
 npx tsc --noEmit   # clean (strict, NodeNext)
 npx vitest run --coverage
-                   # src/recon/** statements 84.63% (1080/1276)
-                   #                        lines    87.22% (983/1127)
-                   #                        branches 70.66% (636/900)
-                   #                        funcs    94.79% (182/192)
+                   # src/recon/** statements 83.78% (1080/1289)
+                   #                        lines    86.59% (982/1134)
+                   #                        branches 69.77% (658/943)
+                   #                        funcs    94.81% (183/193)
 ```
 
 Determinism: `analyzeProject` over `fixtures/solidity/vault` run twice with a
@@ -85,8 +87,8 @@ Phase 2 `contracts.is_abstract`/`contracts.source` and
   triggers those paths with defaults.
 - Name-matching heuristics: none claim identity. Two name *checks* exist and
   both are conservative guards: (a) syntactic fallback only records a storage
-  access when the name matches a known state var and then produces no edge
-  (no `resolvedRef` -> issue bucket); (b) `storage-access.ts` verifies the
+  access when the name matches a same-contract state var and then produces no
+  edge (no `resolvedRef` -> issue bucket); (b) `storage-access.ts` verifies the
   AST-resolved `resolvedRef` is declared in the target contract before
   creating an edge, otherwise it emits an issue.
 - Unprovenanced facts/relationships: structurally impossible —
@@ -100,7 +102,7 @@ Phase 2 `contracts.is_abstract`/`contracts.source` and
 ## Running
 
 ```
-npm test           # vitest, 309 tests across 23 files
+npm test           # vitest, 312 tests across 23 files
 npm run typecheck  # tsc --noEmit (strict, NodeNext)
 npx vitest run --coverage   # src/recon/** scoped coverage
 ```

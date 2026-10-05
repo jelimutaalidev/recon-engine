@@ -48,22 +48,25 @@ src/recon/
                           recordGit, limits {maxFileBytes, maxFiles, timeoutMs}
   issues.ts               ReconIssue {severity, code, message, file?, line_start?, line_end?, count?}
   discover.ts             source walk (excludes .git/node_modules), size/count caps, sha256
-  backend/types.ts        ParserBackend, ParseResult, NormalizedProject contract
+  git.ts                  runGit, gitToplevelMatches, path normalization for git identity
+  timestamp.ts            timestamp priority (config > git HEAD > epoch), git root gate
+  issue-buckets.ts        shared per-(code,file) issue aggregation + flush
   backend/solc/versions.ts pragma parse, deterministic version selection, download+verify+cache
-  backend/solc/compile.ts standard-JSON input/output, stopAfter fallback
-  backend/solc/index.ts   SolcBackend implements ParserBackend
+  backend/solc/compile.ts standard-JSON input/output, stopAfter fallback, methodIdentifiers
   ir/types.ts             NormalizedProject, ContractIR, FunctionIR, StateVarIR, CallSite, StorageAccess, Span
   ir/build.ts             AST -> IR; byte offset -> line (UTF-8 byte-accurate); fidelity flag
+  ir/line-map.ts          UTF-8 byte offset -> 1-based line
   extract/index.ts        ordered extractor registry, state-patch merge, edge dedupe
   extract/contracts.ts  extract/functions.ts  extract/state-variables.ts
   extract/inheritance.ts  extract/calls.ts     extract/storage-access.ts
-  extract/modifiers.ts    extract/event-error-facts.ts  extract/provenance.ts
-  build.ts                IR + issues -> ReconState via Phase-1 factories -> sort -> validateReconState
+  extract/modifiers.ts    extract/event-error-facts.ts  extract/types.ts
+  build.ts                git context -> IR + issues -> ReconState via Phase-1 factories ->
+                          sort -> validateReconState
 tests/recon/**            unit, integration, determinism, security
 fixtures/solidity/**      Solidity fixture repos
 ```
 
-Data flow: `config -> discover -> version-plan -> ParserBackend.parse -> IR ->
+Data flow: `config -> discover -> version-plan -> compile -> IR ->
 extractors -> Phase-1 factories -> sort by id -> validateReconState ->
 AnalysisResult { state, issues }`.
 
@@ -78,6 +81,10 @@ AnalysisResult { state, issues }`.
 NormalizedProject { fidelity: 'semantic'|'syntactic', compiler?: {longVersion, sourceHash},
                     files: SourceFile[], issues: ReconIssue[] }
 SourceFile  { path, sha256, pragmas[] }
+
+`compiler.sourceHash` = sha256 over newline-joined, path-sorted `path:sha256`
+entries of the analyzed sources (deterministic content fingerprint; never
+invented).
 ContractIR  { kind: 'contract'|'interface'|'library', abstract, name, fqn, span,
               bases: {fqn, kind}[] (linearized, self first), stateVars[], functions[], events[], customErrors[] }
 FunctionIR  { kind: 'function'|'constructor'|'fallback'|'receive', name, params/returns {name?, type}[],
@@ -127,7 +134,8 @@ Structural only: `interface` -> `interface`, `library` -> `library`, everything 
 
 ### 5.6 Provenance mandatory, never fabricated
 Every generated FACT and RELATIONSHIP has >=1 `source_code` provenance with file and
-line range where available (repository/commit only when git root == analyzed root;
+line range where available (repository from `config.repository` when set, otherwise from the `origin`
+remote; commit from HEAD — both only when git root == analyzed root;
 compiler version where known). Never invent line numbers, commits, repository identity,
 or compiler metadata. Unavailable info stays absent per schema rules.
 
@@ -212,8 +220,10 @@ no schema change).
 Same repo + commit + config + tool version -> byte-identical serialization.
 `created_at` for Fact/Relationship is injected from `config.timestamp`
 (explicit -> git HEAD committer time -> fixed epoch). Re-run -> same contentIds ->
-`saveState` upserts -> row counts unchanged. Source sha256 recorded for future
-incremental use (not implemented in Phase 2).
+`saveState` upserts -> row counts unchanged. Source sha256 is computed at
+discovery and carried on `SourceFile` as the per-file content fingerprint
+(ChecksumMismatch guard, `compiler.sourceHash` input); it is not persisted in
+ReconState. Incremental (per-file cache) is future work.
 
 ## 10. Testing strategy
 
@@ -276,12 +286,19 @@ TDD (failing test first). Vitest, coverage >= 80% on `src/recon/**`.
 - Storage accesses resolve through AST `referencedDeclaration` to the
   *declaring* contract. If that contract lies outside the compiled source set,
   the access becomes an outside/unresolved issue, not an edge. The syntactic
-  fallback (parse-only compile) records storage accesses without resolution and
-  therefore produces markers/issues only — never edges.
+  fallback (parse-only compile) records only same-contract, name-matched
+  storage-access candidates without resolution; those become issues only
+  (never edges), and other accesses are not recorded at all.
+- Unresolvable `new`/`this.`/`super.`/direct call sites (syntactic mode, or a
+  missing `referencedDeclaration`) share the `unresolved-indirect-call`
+  marker: the §5.3 vocabulary defines no distinct marker for them. The marker
+  still claims no target — conservative, never a claim.
 - Merged edges (same source+target, different call kinds) keep the kind of the
   first recorded site.
 - Single solc version per analysis run (multi-version batches future work).
 - Entity line ranges are string-encoded (`file:lines`), structured lines only on
   facts/relationships; no column precision.
-- Incremental (per-file cache) not implemented; sha256 recorded as groundwork.
+- Incremental (per-file cache) not implemented; per-file sha256 exists only in
+  the discovery/IR pipeline (not persisted in ReconState — would be a schema
+  decision beyond D1-D3).
 - Semantic contract classification (vault/token/proxy...) deferred to future analyzers.
