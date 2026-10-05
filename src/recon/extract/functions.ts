@@ -1,8 +1,14 @@
 import { createFunction, type SolidityFunction } from '../../domain/function.js';
 import type { Mutability, Visibility } from '../../domain/enums.js';
-import { sourceContractId } from '../../ids/ids.js';
 import { modifierText } from './modifiers.js';
-import { patchOf, sourceFileSet, spanString, type Extractor } from './types.js';
+import {
+  contractEntityId,
+  functionSignatureOf,
+  patchOf,
+  sourceFileSet,
+  spanString,
+  type Extractor,
+} from './types.js';
 
 function normalizeVisibility(value: string): Visibility {
   switch (value) {
@@ -33,12 +39,9 @@ export const functionsExtractor: Extractor = (ctx) => {
   const functions: SolidityFunction[] = [];
   for (const contract of ctx.ir.contracts) {
     if (!files.has(contract.span.file)) continue;
-    const contract_id = sourceContractId(contract.span.file, contract.name);
+    const contract_id = contractEntityId(contract);
     for (const fn of contract.functions) {
-      const signature =
-        fn.kind === 'function' && fn.methodIdentifier !== undefined
-          ? fn.methodIdentifier
-          : fn.canonicalSignature;
+      const signature = functionSignatureOf(fn);
       const selector =
         fn.kind === 'function' && fn.selector !== undefined
           ? fn.selector.startsWith('0x')

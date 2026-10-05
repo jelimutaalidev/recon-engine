@@ -4,9 +4,10 @@ import type { StateVariable } from '../../domain/state-variable.js';
 import type { Fact } from '../../epistemic/fact.js';
 import type { ProvenanceInput } from '../../epistemic/provenance.js';
 import type { Relationship } from '../../relationships/relationship.js';
+import { functionId, sourceContractId, stateVariableId } from '../../ids/ids.js';
 import type { ReconConfig } from '../config.js';
 import type { ReconIssue } from '../issues.js';
-import type { NormalizedProject, Span } from '../ir/types.js';
+import type { ContractIR, FunctionIR, NormalizedProject, Span } from '../ir/types.js';
 
 export interface StatePatch {
   contracts: Contract[];
@@ -62,4 +63,22 @@ export function spanString(span: Span): string {
 
 export function patchOf(partial: Partial<StatePatch>): StatePatch {
   return { ...emptyPatch(), ...partial };
+}
+
+export function contractEntityId(contract: ContractIR): string {
+  return sourceContractId(contract.span.file, contract.name);
+}
+
+export function functionSignatureOf(fn: FunctionIR): string {
+  return fn.kind === 'function' && fn.methodIdentifier !== undefined
+    ? fn.methodIdentifier
+    : fn.canonicalSignature;
+}
+
+export function functionEntityId(contract: ContractIR, fn: FunctionIR): string {
+  return functionId(contractEntityId(contract), functionSignatureOf(fn));
+}
+
+export function stateVariableEntityId(contract: ContractIR, name: string): string {
+  return stateVariableId(contractEntityId(contract), name);
 }

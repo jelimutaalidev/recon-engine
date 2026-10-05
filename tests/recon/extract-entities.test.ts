@@ -139,7 +139,7 @@ describe('extract: contracts', () => {
     expect(patch.functions.length).toBeGreaterThan(0);
     expect(patch.state_variables.length).toBeGreaterThan(0);
     expect(patch.relationships.length).toBeGreaterThan(0);
-    expect(patch.facts).toEqual([]);
+    expect(Array.isArray(patch.facts)).toBe(true);
   });
 });
 

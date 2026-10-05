@@ -1,10 +1,13 @@
 import { ReconError } from '../../errors/errors.js';
 import { stableStringify } from '../../util/canonical.js';
 import { sortIssues, type ReconIssue } from '../issues.js';
+import { callsExtractor } from './calls.js';
 import { contractsExtractor } from './contracts.js';
+import { eventErrorFactsExtractor } from './event-error-facts.js';
 import { functionsExtractor } from './functions.js';
 import { inheritanceExtractor } from './inheritance.js';
 import { stateVariablesExtractor } from './state-variables.js';
+import { storageAccessExtractor } from './storage-access.js';
 import type { Extractor, ExtractorContext, StatePatch } from './types.js';
 
 export { createProvenanceFactory } from './types.js';
@@ -15,6 +18,9 @@ export const EXTRACTORS: readonly Extractor[] = [
   functionsExtractor,
   stateVariablesExtractor,
   inheritanceExtractor,
+  callsExtractor,
+  storageAccessExtractor,
+  eventErrorFactsExtractor,
 ];
 
 export function runExtractors(ctx: ExtractorContext): StatePatch {
