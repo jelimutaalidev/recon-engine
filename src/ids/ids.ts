@@ -9,7 +9,8 @@ export type ContentIdPrefix =
   | 'hyp'
   | 'evidence'
   | 'rel'
-  | 'prov';
+  | 'prov'
+  | 'run';
 
 export interface AddressIdentity {
   chainId?: string | undefined;

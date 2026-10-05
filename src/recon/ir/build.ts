@@ -1,10 +1,10 @@
-import { createHash } from 'node:crypto';
 import type { CompileProjectResult } from '../backend/solc/compile.js';
 import { parsePragmas } from '../backend/solc/versions.js';
 import type { DiscoveredFile } from '../discover.js';
 import { bucketIssue, flushIssues, type IssueBuckets } from '../issue-buckets.js';
 import { createReconIssue, type ReconIssue } from '../issues.js';
 import { lineMap } from './line-map.js';
+import { computeSourceHash } from '../source-hash.js';
 import type {
   BaseRef,
   CallKind,
@@ -1037,14 +1037,7 @@ export function buildIr(
 
   issues.push(...flushIssues(ctx.unsupported, 'UNSUPPORTED'));
 
-  const sourceHash = createHash('sha256')
-    .update(
-      [...files]
-        .sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))
-        .map((file) => `${file.path}:${file.sha256}`)
-        .join('\n'),
-    )
-    .digest('hex');
+  const sourceHash = computeSourceHash(files);
   const ir: NormalizedProject = {
     fidelity: result.fidelity,
     compiler: { longVersion: result.longVersion, sourceHash },

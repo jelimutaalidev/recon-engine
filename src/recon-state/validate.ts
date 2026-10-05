@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { ReconError } from '../errors/errors.js';
 import {
   assetId,
@@ -24,7 +23,7 @@ import {
   SUPPORTED_SCHEMA_VERSIONS,
   type ReconState,
 } from './schema.js';
-import { serializeReconState } from './state.js';
+import { computeOutputIdentity } from '../traceability/identities.js';
 import { MATERIAL_ENTITY_TYPES } from '../traceability/types.js';
 
 const EXPECTED_CONFIDENCE: Record<string, ConfidenceLevel> = {
@@ -369,9 +368,7 @@ function assertTraceability(state: ReconState): void {
   add('outputs', duplicateOutputs);
   for (const entry of nonMaterialOutputs) add(entry.source, [entry.entity_type]);
 
-  const currentHash = createHash('sha256')
-    .update(serializeReconState(state, { omitTraceability: true }), 'utf8')
-    .digest('hex');
+  const currentHash = computeOutputIdentity(state).output_hash;
   const currentRun = traceability.runs.find(
     (run) => run.output_identity?.output_hash === currentHash,
   );
