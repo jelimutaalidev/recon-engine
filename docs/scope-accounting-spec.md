@@ -159,7 +159,8 @@ primitives (shared glob/containment code, not a second glob implementation):
 - files matching at least one `config.includes` pattern (default `**/*.sol`,
   `src/recon/config.ts:32`), enumerated **before** exclusion checks;
 - **literal** (glob-magic-free) `config.includes` entries with zero filesystem
-  match → `NOT_FOUND` expectations;
+  match → `NOT_FOUND` expectations, provided the expectation's path lies in the
+  enumerable, non-excluded scope (see the always-excluded boundary rule below);
 - always-excluded directories encountered during traversal (`.git`,
   `node_modules`, `.recon-cache`, `src/recon/discover.ts:15`) → **one dir-level
   exclusion marker each** (contents never enumerated; walk stays bounded);
@@ -191,7 +192,14 @@ primitives (shared glob/containment code, not a second glob implementation):
 - literal expectations are normalized root-relative posix paths: duplicates
   collapse to one expectation; a literal include that escapes the root after
   normalization is rejected (`RootEscape`) during inventory build — absence is
-  never claimed for paths outside the root.
+  never claimed for paths outside the root;
+- a literal include whose path lies under an always-excluded directory
+  **disappears behind that boundary**: the walk stops at the directory, so the
+  literal receives **no individual `ScopeEntry`** (neither `EXCLUDED` nor
+  `NOT_FOUND`) — its only accounting is the `always:<dirname>` dir-level
+  marker. Literal `NOT_FOUND` therefore requires a completed walk over an
+  enumerable, non-excluded scope (§5, INV-4), never a path the walk is
+  forbidden to enter (closing-review decision, 2026-10-06).
 
 ## 5. Status semantics
 
@@ -611,7 +619,9 @@ in-process); any foundation rewrite.
 
 Approved 2026-10-06. OD-3 and OD-4 approved **as revised** (attribution-based
 classification; UNKNOWN-only `UNRESOLVED` trigger); OD-9 approved with the
-`coverage → clean_coverage` rename; all others approved unchanged.
+`coverage → clean_coverage` rename; all others approved unchanged. OD-11 added
+by the Phase 3 closing review 2026-10-06 (literal-includes-under-always-dirs
+resolution, §4).
 
 | # | Decision | Recommendation | Rationale / alternative cost | Ref |
 |---|---|---|---|---|
@@ -625,3 +635,4 @@ classification; UNKNOWN-only `UNRESOLVED` trigger); OD-9 approved with the
 | OD-8 | `NOT_FOUND` breadth v1 | Literal includes only | Globs cannot enumerate nonexistent members; no external expectation list exists | §4 |
 | OD-9 | Coverage denominator | **Approved with rename:** metric named `clean_coverage`; E (policy-excluded targets removed) as denominator; gap-free-processing-share interpretation only (§10) | Exclusions are operator decisions; counting them hides real gaps behind policy noise; the rename prevents semantic-completeness overclaim | §10 |
 | OD-10 | Document paths | `docs/scope-accounting-spec.md` + `docs/plans/2026-10-06-recon-phase3-scope-accounting.md` | Matches repo flat-docs + `docs/plans/` convention | — |
+| OD-11 | Literal includes under always-excluded directories | **Approved (closing review 2026-10-06):** disappear behind the boundary — `always:<dirname>` dir marker only, no individual `ScopeEntry` (neither `EXCLUDED` nor `NOT_FOUND`); literal `NOT_FOUND` only over an enumerable, non-excluded scope | A literal `EXCLUDED` entry would fabricate accounting for a target the walk never enumerated; a literal `NOT_FOUND` would claim absence from a walk forbidden to enter the path | §4 |

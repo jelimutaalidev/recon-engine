@@ -66,7 +66,8 @@ implementation).
 - files matching at least one `config.includes` pattern (default `**/*.sol`),
   enumerated *before* exclusion checks;
 - **literal** (glob-magic-free) `config.includes` entries with zero filesystem
-  match → `NOT_FOUND` expectations;
+  match → `NOT_FOUND` expectations, provided the expectation's path lies in the
+  enumerable, non-excluded scope (see the always-excluded rule below);
 - always-excluded directories encountered during traversal (`.git`,
   `node_modules`, `.recon-cache`) → one directory-level exclusion marker each
   (contents never enumerated, so the walk stays bounded);
@@ -97,7 +98,12 @@ matched at any depth); the entry's `path` is the full root-relative directory
 path with no trailing slash. Literal expectations are normalized root-relative
 posix paths — duplicates collapse to one expectation, and a literal include
 that escapes the root after normalization is rejected during inventory build;
-absence is never claimed for paths outside the root.
+absence is never claimed for paths outside the root. A literal include whose
+path lies under an always-excluded directory disappears behind that boundary:
+it receives no individual `ScopeEntry` (neither `EXCLUDED` nor `NOT_FOUND`) —
+only the directory-level `always:<dirname>` marker accounts for it — and
+literal `NOT_FOUND` requires a completed walk over an enumerable, non-excluded
+scope.
 
 The denominator for the rate metrics is `E`. Policy-excluded targets were never
 supposed to be analyzed, so they never penalize the share below.
