@@ -8,7 +8,7 @@ import { deriveEntries } from './derive.js';
 import { computeCounts, computeMetrics } from './metrics.js';
 import type { ScopeReport, Stage } from './model.js';
 import { finalizeScopeReport } from './report.js';
-import { validateScopeReport } from './validate.js';
+import { validateScopeReport, validateScopeReportWithState } from './validate.js';
 
 const SCHEMA_VERSION = 'scope-report/v1';
 
@@ -115,5 +115,6 @@ export async function analyzeProjectScoped(
   };
   const report = finalizeScopeReport(draft);
   validateScopeReport(report);
+  validateScopeReportWithState(report, result.state, result.meta);
   return { result, report };
 }

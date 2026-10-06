@@ -1,4 +1,8 @@
 import { ReconError } from '../errors/errors.js';
+import { spanFile } from '../recon/extract/types.js';
+import type { ReconState } from '../recon-state/schema.js';
+import { compareCodeUnits } from '../util/canonical.js';
+import { computeOutputIdentity } from '../traceability/identities.js';
 import { hasCompilationFailed, hasUnknown } from './evidence.js';
 import { computeCounts, computeMetrics } from './metrics.js';
 import type { EmbeddedIssue, ScopeEvidence, ScopeEntry, ScopeReport } from './model.js';
@@ -13,7 +17,10 @@ type Reason =
   | 'evidence_missing'
   | 'evidence_contradicted'
   | 'run_binding'
-  | 'rollup_mismatch';
+  | 'rollup_mismatch'
+  | 'file_count_mismatch'
+  | 'provenance_mismatch'
+  | 'fidelity_mismatch';
 
 const EXCLUDE_RULE_PREFIXES = ['config:excludes:', 'always:', 'type:'];
 
@@ -226,4 +233,112 @@ export function validateScopeReport(report: unknown): ScopeReport {
   }
 
   return scopeReport;
+}
+
+function collectProvenanceSpanFiles(state: ReconState): Set<string> {
+  const files = new Set<string>();
+  const addFile = (file: string | undefined): void => {
+    if (file !== undefined && file.length > 0) files.add(file);
+  };
+  const visitEntity = (entity: { source?: unknown; provenance?: unknown }): void => {
+    if (Array.isArray(entity.provenance)) {
+      for (const record of entity.provenance as { file?: unknown }[]) {
+        if (typeof record.file === 'string') addFile(record.file);
+      }
+    }
+    if (typeof entity.source === 'string') addFile(spanFile(entity.source));
+  };
+  const entities: unknown[] = [
+    state.project,
+    ...state.contracts,
+    ...state.functions,
+    ...state.state_variables,
+    ...state.assets,
+    ...state.roles,
+    ...state.dependencies,
+    ...state.relationships,
+    ...state.facts,
+    ...state.observations,
+    ...state.assumptions,
+    ...state.hypotheses,
+    ...state.evidence,
+  ];
+  for (const entity of entities) {
+    if (entity === undefined || entity === null) continue;
+    visitEntity(entity as { source?: unknown; provenance?: unknown });
+  }
+  for (const record of state.provenance) addFile(record.file);
+  const traceability = state.traceability;
+  if (traceability !== undefined) {
+    for (const derivation of traceability.derivations) {
+      for (const span of derivation.provenance) addFile(spanFile(span));
+      for (const ref of derivation.inputs) {
+        if (ref.entity_type === 'source_file') addFile(ref.entity_id);
+      }
+    }
+  }
+  return files;
+}
+
+export function validateScopeReportWithState(
+  report: ScopeReport,
+  state: ReconState,
+  meta: { fileCount: number; fidelity?: 'semantic' | 'syntactic' },
+): void {
+  const { counts } = report;
+
+  const onDiskOutcomes =
+    counts.analyzed + counts.unresolved + counts.unsupported + counts.failed;
+  if (meta.fileCount !== onDiskOutcomes) {
+    fail(
+      'file_count_mismatch',
+      `meta.fileCount ${meta.fileCount} does not equal analyzed+unresolved+unsupported+failed ${onDiskOutcomes} (INV-11)`,
+    );
+  }
+
+  const allowedPaths = new Set<string>();
+  for (const entry of report.entries) {
+    if (entry.status === 'ANALYZED' || entry.status === 'UNRESOLVED') {
+      allowedPaths.add(entry.path);
+    }
+  }
+  const violations = [...collectProvenanceSpanFiles(state)]
+    .filter((file) => !allowedPaths.has(file))
+    .sort(compareCodeUnits);
+  if (violations.length > 0) {
+    fail(
+      'provenance_mismatch',
+      `provenance cites file ${String(violations[0])} with no ANALYZED/UNRESOLVED entry (8.1, INV-11)`,
+    );
+  }
+
+  const outputHash = computeOutputIdentity(state).output_hash;
+  const currentRun = state.traceability?.runs.find(
+    (run) => run.output_identity?.output_hash === outputHash,
+  );
+  const currentBinding =
+    currentRun !== undefined && currentRun.output_identity !== undefined
+      ? {
+          run_id: currentRun.id,
+          input_manifest_hash: currentRun.input_manifest_hash,
+          output_hash: currentRun.output_identity.output_hash,
+        }
+      : null;
+  if (report.run_status === 'COMPLETED') {
+    if (!deepEqual(report.run, currentBinding)) {
+      fail(
+        'run_binding',
+        'COMPLETED report run must equal the state current run found by the computeOutputIdentity rule (8.1, INV-9)',
+      );
+    }
+  } else if (report.run !== null) {
+    fail('run_binding', 'FAILED report must bind no run (8.1, INV-9)');
+  }
+
+  if (report.run_fidelity !== meta.fidelity) {
+    fail(
+      'fidelity_mismatch',
+      `run_fidelity ${String(report.run_fidelity)} does not equal meta.fidelity ${String(meta.fidelity)} (INV-11)`,
+    );
+  }
 }
