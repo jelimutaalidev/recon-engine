@@ -84,8 +84,16 @@ stableStringify({ ...configWithoutRootOrTimestamp,
 ```
 
 - `root` is stripped (machine path) and `timestamp` is stripped (execution
-  metadata, spec §4.1) — two configs differing only in `root`/`timestamp`
-  produce equal `config_hash`, `input_manifest_hash`, and `run_id`.
+  metadata, spec §4.1) — `config_hash` is therefore equal for two configs that
+  differ only in `root` or `timestamp`.
+- `input_manifest_hash` and `run_id` hash that `config_hash` inside a payload
+  that also carries `sourceIdentity`, which includes
+  `source_root = basename(config.root)` (`src/recon/build.ts:94`,
+  `identities.ts:60-72`, `lineage.test.ts:95` pins `source_root === 'vault'`).
+  They are therefore unaffected by the **directory** portion of `root` and by
+  `timestamp`, but they **do** change when the basename does: `/tmp/vault` vs
+  `/tmp/vault-copy` yield equal `config_hash` and different
+  `input_manifest_hash`/`run_id`.
 - The value is canonical JSON, not a hex digest. `remappings` and other
   fields are hashed as configured (array order is part of their meaning).
 
