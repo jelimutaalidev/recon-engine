@@ -16,8 +16,9 @@ run output lineage, `TraceStatus`, structural validation, persistence
 
 Out of scope (spec §27): vulnerability detection, exploit/PoC generation,
 severity scoring, LLM reasoning, agents, RAG, vector stores, learning,
-evaluation datasets. Traceability is deterministic infrastructure — no LLM is
-required to create or read it (spec §23).
+investigation execution, attack simulation, evaluation datasets.
+Traceability is deterministic infrastructure — no LLM is required to create
+or read it (spec §23).
 
 ## Architecture: six layers → modules (spec §3)
 
@@ -48,9 +49,13 @@ attached, then `buildTraceability` emits `{ runs: [run], derivations, outputs }`
 and `createReconState` validates the result. The `traceability` key on
 `ReconState` is optional; `schema_version` stays `recon-state/v1`.
 
-Material outputs (the only entity types derivations and `run_outputs` may
-cover): `contract`, `function`, `state_variable`, `relationship`, `fact`
-(`MATERIAL_ENTITY_TYPES`). Observation / Assumption / Hypothesis / Evidence /
+Material outputs (the only entity types `run_outputs` may cover, and the only
+entity types current-run derivations may cover via rule (a)): `contract`,
+`function`, `state_variable`, `relationship`, `fact`
+(`MATERIAL_ENTITY_TYPES`). Type membership is enforced structurally for
+`outputs[].entity_type` on every run and for current-run derivation output
+refs; historical derivation refs are not type-checked (see Documented
+resolution 2 below). Observation / Assumption / Hypothesis / Evidence /
 assets / roles / dependencies are never given fabricated lineage (spec §12).
 
 ## Identity formulas
@@ -192,8 +197,8 @@ absent for the bundled solc-js backend**.
 
 - **Structural, always:** unique `runs[].id`, unique `derivations[].id`, every
   `derivation.run_id` exists in `runs` (T3); `outputs` unique on
-  `(run_id, entity_type, entity_id)`; `outputs[].entity_type` ∈
-  `MATERIAL_ENTITY_TYPES`.
+  `(run_id, entity_type, entity_id)`; every `outputs[].run_id` exists in
+  `runs` and `outputs[].entity_type` ∈ `MATERIAL_ENTITY_TYPES` (T4).
 - **Current run only** (run whose `output_identity.output_hash` matches the
   recomputed hash): every derivation output ref resolves to a material entity
   present in the state **(rule a, T1)**; every `source_file` input ref resolves
@@ -291,8 +296,8 @@ documented, and pinned at `service.test.ts:215`.
   `truncated: false`).
 - Backward chain: `entity → derivation → source_file + provenance_span →
   source_identity → run`. `source_identity` nodes are deduped by
-  `source_hash`; the run node fans out to every run sharing that source hash
-  (any-run view, R7).
+  `source_hash` and fan out to every run sharing that source hash (any-run
+  view, R7); `run` nodes return no children.
 - Forward chain: `source_file/entity → derivation → material outputs`. It
   follows **only real derivation edges**.
 - Node kinds: `entity | source_file | provenance_span | derivation |
@@ -323,7 +328,7 @@ end-to-end.
 | T1 Valid references | every trace reference resolves | rule (a) current-run outputs; rule (b) current-run source inputs; `findOrphanedTraceReferences()` for the rest |
 | T2 No orphan material output | material output never stored without trace info | rule (c) coverage; fails `createReconState` with `InvalidReconState{check:'traceability'}` |
 | T3 Run ownership | each derivation belongs to exactly one run | `derivation.run_id` must exist in `runs`; PK on `derivations.id` |
-| T4 Output ownership | derived outputs attributable to their run | `derivations[].outputs → run_id` linkage + `run_outputs` rows per run |
+| T4 Output ownership | derived outputs attributable to their run | `derivations[].outputs → run_id` linkage + `run_outputs` rows per run; every `outputs[].run_id` must exist in `runs` |
 | T5 Immutable historical provenance | historical provenance never overwritten | additive `run_outputs`/`derivations` rows; re-save asserts identical content; test `integrity.test.ts:542` |
 | T6 Versioned derivation | logic changes distinguishable via `operation_version` and/or analyzer version | `operation_version = ANALYZER_VERSION`; analyzer version is part of the run id (hence of the derivation id); queryable via Q5 — see the derivation-id note above |
 | T7 No false resolution | UNKNOWN never becomes RESOLVED without evidence | status is per-entity, never blanket; zero-lineage stays `MISSING` (`integrity.test.ts:498`) |
@@ -351,11 +356,13 @@ constraint. Resolution: run attribution lives in the traceability layer
 trace reference resolves") cannot be enforced against historical runs: an old
 run legitimately references entities that no longer exist in the current
 collections. Resolution: strict resolution (rules a/b/c) applies to the current
-run only; historical refs are structurally validated (run, uniqueness, type
-membership) and resolved at query time through `run_outputs`. Historical
-output refs load clean and are not flagged orphaned
-(`integrity.test.ts:366`); a dangling historical ref with no `run_outputs`
-row *is* reported by Q8 (`integrity.test.ts:394`).
+run only; historical derivation refs are structurally validated for run
+membership and id uniqueness only — no type-membership or resolution check
+(type membership is enforced solely for `run_outputs[].entity_type` on every
+run and, through rule (a), for current-run derivation outputs) — and resolve at
+query time through `run_outputs`. Historical output refs load clean and are
+not flagged orphaned (`integrity.test.ts:366`); a dangling historical ref with
+no `run_outputs` row *is* reported by Q8 (`integrity.test.ts:394`).
 
 ## Persistence (spec §19)
 
@@ -460,19 +467,24 @@ Two further traceability-specific failure modes, both
   Phase-3 entity row versioning lands, multi-run history supports only edits
   that do not shift existing entity spans.
 - **`getRun` tie-break.** Current-run match first, else lexicographically
-  greatest `run_id`; `undefined` when no derivation lists the object. Runs
-  sharing an identical `output_hash` all qualify as current (validation
-  applies the strict rules to the first such run, `getRun` to the greatest
-  run id among them) — unreachable with hash-derived ids, but unpinned beyond
-  the single-current case.
+  greatest `run_id`; `undefined` when no derivation lists the object. Two runs
+  sharing an identical `output_hash` are reachable — an EOF-only source edit
+  keeps the `omitTraceability` serialization byte-identical, hence equal
+  `output_hash` across runs (`e2e.test.ts:493`) — and both qualify as current:
+  validation applies the strict rules to the first such match in `runs` order
+  (`validate.ts:393-395`), while `getRun` returns the greatest matching
+  `run_id` among them (`service.ts:461-468`); only the single-current
+  preference/fallback is pinned (`service.test.ts:215`).
 - **`binary_hash` absent for bundled solc** (no binary digest is available for
   the solc-js backend).
 - **Git fields quirk.** When git is unavailable (`recordGit: false`, the root
   is not a git toplevel, or `rev-parse HEAD` fails) `resolveGitContext`
   returns an empty context: `SourceIdentity.repository`/`commit` and
   `Project.commit` are simply **absent** and analysis continues without
-  crashing (the timestamp falls back to epoch with a RECOVERABLE
-  `git_unavailable` issue). The model records no git *branch* field at all.
+  crashing (with `recordGit: true` the timestamp falls back to epoch with a
+  RECOVERABLE `git_unavailable` issue; with `recordGit: false` it falls back
+  to epoch silently, with no issue — `timestamp.ts:33-49`). The model records
+  no git *branch* field at all.
   The quirk carried from the Task 3 review: `computeSourceIdentity` omits
   `repository`/`commit` only when the value is `undefined` — a caller-supplied
   empty string would persist unvalidated (only `source_root` filters empty
@@ -504,7 +516,7 @@ Two further traceability-specific failure modes, both
 | **Integration** | |
 | deterministic extraction produces traceable outputs | `lineage.test.ts:80`, `:133`, `:182` |
 | existing provenance remains compatible | `src/epistemic/provenance.ts` untouched since Phase 1 (last change `4baa45d`), `schema.test.ts:281` (legacy state), `e2e.test.ts:312` (facts retain provenance) |
-| run ownership is enforced | `schema.test.ts:263`, `integrity.test.ts:788` |
+| run ownership is enforced | `schema.test.ts:263`, `integrity.test.ts:788`, `schema.test.ts:610` (output run ownership) |
 | derivation ownership is enforced | `integrity.test.ts:788` (rule a), `persistence.test.ts:244` |
 | **Traversal** | |
 | backward traversal works | `service.test.ts:270`; `e2e.test.ts:159` |
@@ -516,7 +528,7 @@ Two further traceability-specific failure modes, both
 | **Integrity** | |
 | orphan detection works | `integrity.test.ts:394` (non-empty branch) |
 | incomplete trace detection works | `integrity.test.ts:436`; `e2e.test.ts:329` |
-| invalid references are rejected | `schema.test.ts:445`, `:472`; `persistence.test.ts:273` |
+| invalid references are rejected | `schema.test.ts:446`, `:473`; `persistence.test.ts:273` |
 | cross-run contamination is rejected | `integrity.test.ts:293`, `:320` |
 | historical provenance is preserved | `integrity.test.ts:542`; `e2e.test.ts:477` |
 | **Determinism** | |
@@ -541,7 +553,7 @@ Two further traceability-specific failure modes, both
 
 ## Tests
 
-`tests/traceability/`: `schema.test.ts` (17), `persistence.test.ts` (5),
+`tests/traceability/`: `schema.test.ts` (18), `persistence.test.ts` (5),
 `identities.test.ts` (10), `lineage.test.ts` (7), `service.test.ts` (11),
-`compare.test.ts` (8), `integrity.test.ts` (12), `e2e.test.ts` (12) — 82
+`compare.test.ts` (8), `integrity.test.ts` (12), `e2e.test.ts` (13) — 84
 traceability tests inside the full suite.
