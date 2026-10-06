@@ -206,6 +206,17 @@ primitives (shared glob/containment code, not a second glob implementation):
 | `UNSUPPORTED` | **Structured, per-target** content attribution proves this file's bytes were refused (parse errors) and it was dropped | `issue(compilation_failed)` with `file` equal to this entry's `path`, **or** structured `dropped[]` containing this entry's `path` | human-readable message-text inference; batch causes without per-target attribution; `unsupported_*` construct findings |
 | `FAILED` | Run failure prevented analysis and **no per-target content attribution exists** for this target | `run_error {stage, error_class, message}`, applicable because the target is on-disk, in E, and unattributed | content problems proved for that target (those are `UNSUPPORTED`); `EXCLUDED` / `NOT_FOUND` entries |
 
+**Orthogonality of `run_status` and entry status (normative):** `run_status`
+describes the pipeline/run outcome; `ScopeEntry.status` describes target-level
+accounting. Neither may be inferred from the other. A `FAILED` run may
+legitimately have `counts.failed = 0` when every expected on-disk target has
+independently attributable `UNSUPPORTED` status. A `COMPLETED` run may
+legitimately contain `UNSUPPORTED`, `UNRESOLVED`, or other target statuses when
+those statuses are independently supported by target-level evidence and the run
+itself completed. Identical entry partitions may therefore carry different
+`run_status` values, and identical `run_status` values may carry different
+entry partitions — both dimensions are asserted independently (T5, T7, T9, T11).
+
 **`ANALYZED` MUST NOT imply:** semantic completeness, complete construct
 modeling, absence of issues, soundness, security coverage, audit coverage, or
 risk reduction. It claims exactly one thing: the pipeline processed the target
@@ -348,6 +359,12 @@ no message-text parsing (INV-6, INV-7).
   `FAILED ⇒ counts.analyzed = counts.unresolved = 0` (INV-9, INV-12). Run
   failure, target failure, and content refusal stay three distinct signals
   (`run_status`, entry `FAILED`, entry `UNSUPPORTED`) — never collapsed.
+  **Orthogonality (normative, §5.1):** `run_status` describes the
+  pipeline/run outcome; `ScopeEntry.status` describes target-level accounting;
+  neither may be inferred from the other — hence `FAILED` + `failed = 0`
+  (all-on-disk attributed `UNSUPPORTED`, e.g. `all-dropped`) and `COMPLETED`
+  with `UNSUPPORTED`/`UNRESOLVED` entries (target evidence-backed) are both
+  legitimate, and both are test-pinned.
 - Scope of loudness: catchable errors; an uncatchable process death (OOM,
   SIGKILL) cannot carry a report — documented honesty limit (§7).
 
@@ -388,7 +405,12 @@ no message-text parsing (INV-6, INV-7).
    human-readable error-message text (content-caused classes are stable
    cross-environment for a pinned compiler).
 8. **Non-mutation:** scope build/validate leaves ReconState byte-identical.
-9. **Run binding:** COMPLETED ⇒ `run` equals the state's current run identity,
+9. **Run binding and orthogonality:** `run_status` and entry statuses are
+   orthogonal — neither may be inferred from the other (§5.1): a FAILED run may
+   carry `counts.failed = 0` when every on-disk expected entry has independently
+   attributable `UNSUPPORTED` status; a COMPLETED run may carry `UNSUPPORTED`,
+   `UNRESOLVED`, or other target statuses backed by target-level evidence.
+   COMPLETED ⇒ `run` equals the state's current run identity,
    `run_fidelity` present, `counts.failed = 0`; FAILED ⇒ `run: null`,
    `failed_stage` present, `counts.analyzed = 0`, `counts.unresolved = 0`
    (neither completion nor a semantic-resolution verdict survives an abort; so
@@ -407,7 +429,9 @@ no message-text parsing (INV-6, INV-7).
     failed, it carries none (no fabricated partition); a FAILED report never
     leaves an on-disk expected target unaccounted (as `ANALYZED`/`UNRESOLVED`) —
     `counts.failed = 0` requires full `UNSUPPORTED` attribution or no on-disk
-    target (INV-9); applies to catchable errors (uncatchable death cannot carry
+    target (INV-9); run outcome and target accounting stay orthogonal (§5.1) —
+    loudness never fabricates target failures to mirror `run_status`, nor the
+    reverse; applies to catchable errors (uncatchable death cannot carry
     reports — §7).
 13. **Target-attribution:** target-status evidence is target-attributable. For
     every `ScopeEntry`: `UNRESOLVED` requires ≥1 UNKNOWN issue attributable to

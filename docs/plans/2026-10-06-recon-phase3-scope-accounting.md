@@ -18,6 +18,7 @@
 - **ReconState v1 frozen:** no `scope` key in `ReconStateSchema` (OD-1); `serializeReconState` output byte-identical before/after any scope operation (INV-8).
 - **Foundation touch budget (OD-6, exhaustive):** `src/recon/discover.ts` — add `export` to exactly `globToRegExp`, `ALWAYS_EXCLUDED_DIRS`, `assertInsideRoot`, `sortPaths` (no logic change); `src/errors/errors.ts` — add `| 'InvalidScopeReport'` to `ReconErrorCode`. **Zero edits:** `src/recon-state/**`, `src/traceability/**`, `src/util/canonical.ts`, `src/ids/**`, `src/relationships/graph.ts`, `src/recon/issues.ts`, `src/recon/build.ts`, `src/recon/index.ts`, `src/repository/**`.
 - **Metric name `clean_coverage`** — forbidden as labels in code/docs/tests/commits: `coverage` (bare), "recon completeness", "semantic completeness" (except inside the required negation sentence, §10), "security coverage", "audit coverage", "understanding percentage", "risk reduction" (same exception).
+- **Orthogonality (spec §5.1):** `run_status` = run outcome; `ScopeEntry.status` = target accounting; neither inferred from the other — `FAILED` + `failed = 0` (all attributed `UNSUPPORTED`) and `COMPLETED` + `UNSUPPORTED`/`UNRESOLVED` entries are both legitimate; tests pin both dimensions independently (T5, T7, T9, T11).
 - **Attribution:** classification reads structured artifacts only (`dropped[]`, `issue.file`, error class) — never human-readable error-message text (INV-7, INV-13).
 - **Report hygiene:** root-relative posix paths only; no timestamps/randomness/absolute paths (only exception: verbatim `run_error.message`); all ordering via `compareCodeUnits`; `scope_hash = sha256(stableStringify(report without scope_hash))`.
 - **Import gate:** `src/scope/**` may import only `node:fs`, `node:path`, `node:crypto`, `zod`, `src/**` (A2).
@@ -55,7 +56,15 @@
 
 ### A3 — `counts.failed = 0` vs the `all-dropped` golden
 
-- **Chosen resolution:** replaced "failed = 0 only when E has no on-disk target" with the accounting rule: on a `FAILED` report every on-disk expected target is `UNSUPPORTED` (content-attributed) or `FAILED` (unattributed); `failed = 0` is valid iff all on-disk expected targets are `UNSUPPORTED` or there are none; **added `counts.unresolved = 0` to INV-9** for FAILED reports. Reworded INV-12 from "never silently zero" to explicit non-collapsing accounting; §8.2 gained an "accounting under failure" bullet; Layer E test wording updated.
+- **Orthogonality wording lock (normative, spec §5.1/§8.2/INV-9/INV-12):**
+  *«`run_status` describes the pipeline/run outcome; `ScopeEntry.status`
+  describes target-level accounting. Neither may be inferred from the other. A
+  `FAILED` run may legitimately have `counts.failed = 0` when every expected
+  on-disk target has independently attributable `UNSUPPORTED` status. A
+  `COMPLETED` run may legitimately contain `UNSUPPORTED`, `UNRESOLVED`, or other
+  target statuses when those statuses are independently supported by
+  target-level evidence and the run itself completed.»*
+- **Chosen resolution:** replaced "failed = 0 only when E has no on-disk target" with the accounting rule: on a `FAILED` report every on-disk expected target is `UNSUPPORTED` (content-attributed) or `FAILED` (unattributed); `failed = 0` is valid iff all on-disk expected targets are `UNSUPPORTED` or there are none; **added `counts.unresolved = 0` to INV-9** for FAILED reports. Reworded INV-12 from "never silently zero" to explicit non-collapsing accounting; §8.2 gained an "accounting under failure" bullet; Layer E test wording updated. The orthogonality rule above is the framing principle for all of it.
 - **Why semantically correct (not a weakening):** the old rule conflated three distinct signals — `run_status: FAILED` (the run died), entry `FAILED` (unattributed failure hit this target), entry `UNSUPPORTED` (structured per-target content refusal). On `all-dropped` the run genuinely failed (foundation throws `CompilationFailed: no source survived compilation`, `compile.ts:521-526`) while every target is *accounted* — as `UNSUPPORTED`, with `compilation_failed` evidence — so `counts.failed = 0` correctly reports "zero targets failed for unattributed reasons"; forcing `failed > 0` would fabricate target failures that never happened and collapse UNSUPPORTED into FAILED (violating no-collapse, §9/§22). INV-1 (partition) + INV-9 (`analyzed = 0`, `unresolved = 0`) now imply `unsupported + failed = expected − not_found`, so no on-disk target can be left unaccounted — the completeness the old wording reached for, without the category error. The four distinctions stay separately expressible: run failure = report-level (`run_status`/`failed_stage`); target failure = entry `FAILED` + `run_error`; content refusal = entry `UNSUPPORTED` + attribution; and a COMPLETED run with every on-disk target `UNSUPPORTED` remains a **legal partition** (no invariant forbids it) even though the current pipeline cannot produce it (foundation throws when nothing survives).
 - **Affected spec sections:** §8.2 (accounting-under-failure bullet), INV-9, INV-12, §13 Layer E.
 - **Affected tests/fixtures:** Task 7 (new accept/reject cases below), Task 9 (branch fixtures), Task 11 `all-dropped` golden — now a logically valid partition under the final rules.
@@ -554,9 +563,9 @@ export function validateScopeReportWithState(
 | 1 | `clean-vault` | 2 valid contracts | COMPLETED semantic; both ANALYZED; `clean_coverage {2,2}` |
 | 2 | `mixed-excludes` | valid + `lib/**` excluded + oversized (`limits.maxFileBytes` small) + `node_modules/` | COMPLETED; ANALYZED + EXCLUDED(config) + EXCLUDED(limit) + EXCLUDED(always dir marker) |
 | 3 | `literal-missing` | 1 valid + literal `contracts/Ghost.sol` | COMPLETED; NOT_FOUND ⊆ E; `clean_coverage {1,2}` |
-| 4 | `all-dropped` | `contract {{{` (irrecoverable parse) | foundation throws `CompilationFailed('no source survived')` ⇒ FAILED; entry UNSUPPORTED; `{expected:1, unsupported:1, failed:0}`; `failed_stage: 'compile'`; `run: null` — **valid under A3** |
+| 4 | `all-dropped` | `contract {{{` (irrecoverable parse) | foundation throws `CompilationFailed('no source survived')` ⇒ FAILED; entry UNSUPPORTED; `{expected:1, unsupported:1, failed:0}`; `failed_stage: 'compile'`; `run: null` — **valid under A3; orthogonality pin: `run_status: 'FAILED'` with `counts.failed === 0`** |
 | 5 | `syntactic-fallback` | contract with undeclared call | COMPLETED; `run_fidelity: 'syntactic'`; `fallback_count: 1`; statuses per golden (attributable UNKNOWN ⇒ UNRESOLVED) |
-| 6 | `run-abort` | real inventory (A.sol, B.sol, excluded C.sol, literal Ghost) + **injected `deps.analyze`** throwing CompilationFailed `{issues:[compilation_failed file:'B.sol'], dropped:['B.sol']}` | FAILED; B UNSUPPORTED, A FAILED, C EXCLUDED, Ghost NOT_FOUND; `failed_stage: 'compile'`; `run: null`. (Only seam-using corpus: no environment-independent real abort exists — documented reason.) |
+| 6 | `run-abort` | real inventory (A.sol, B.sol, excluded C.sol, literal Ghost) + **injected `deps.analyze`** throwing CompilationFailed `{issues:[compilation_failed file:'B.sol'], dropped:['B.sol']}` | FAILED; B UNSUPPORTED, A FAILED, C EXCLUDED, Ghost NOT_FOUND; `failed_stage: 'compile'`; `run: null` — **orthogonality pin: one `FAILED` run carries both target-failed (`A`) and content-refused (`B`) entries; `failed = 1 ≠ 0` while run and target dimensions stay independently asserted.** (Only seam-using corpus: no environment-independent real abort exists — documented reason.) |
 | 7 | `only-excluded` | single file excluded by pattern | real `NoSourcesFound` ⇒ FAILED; all EXCLUDED; `expected: 0`; `clean_coverage {1,1}`; rates `{0,1}`; `failed_stage: 'discover'` |
 
 **Interfaces:**
@@ -568,6 +577,7 @@ export function validateScopeReportWithState(
   - `each corpus serializes byte-identically on a second run` (determinism).
   - `no golden contains an absolute path or ISO timestamp` [RF4].
   - `explicit partition assertions` per the table (statuses, counts, `run_status`, `failed_stage`, `run_fidelity`, metrics values — exact numbers, not just golden equality).
+  - `run_status and entry status are orthogonal` [wording lock] — on `all-dropped`: `run_status === 'FAILED'` AND `counts.failed === 0` AND `counts.unsupported === 1` (run outcome and target failure asserted independently); on `run-abort`: `run_status === 'FAILED'` with `counts.failed === 1` AND `counts.unsupported === 1` (one run, two distinct target-accounting outcomes).
   - `static import gate: src/scope imports only the allowlist` [A2] — scan `src/scope/**/*.ts` for `from '…'`/`import '…'`: allow `node:fs|node:path|node:crypto|zod` and relative specifiers resolving inside `src/`; reject `eval(`, `require(`, `node:child_process`, `node:net`, `http`.
 
 - [ ] **Step 2: Run test to verify it fails** — goldens absent → FAIL.
