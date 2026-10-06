@@ -1,4 +1,4 @@
-import { appendFileSync, cpSync, mkdtempSync, rmSync } from 'node:fs';
+import { appendFileSync, cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -549,6 +549,42 @@ describe('e2e vault trace (spec §26 traversal DoD)', () => {
       expect([runA.id, runB.id]).toContain(reloaded.getRun(relationship.id)?.id);
       expect(reloaded.findOrphanedTraceReferences()).toEqual([]);
       expect(reloaded.findIncompleteTraces()).toEqual([]);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('line-shifting source edit is rejected by canonical persistence', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'recon-e2e-'));
+    try {
+      const tmpRoot = join(tmp, 'vault');
+      cpSync(VAULT_ROOT, tmpRoot, { recursive: true });
+      // prepend a comment: stable entity ids, shifted `source` spans
+      const target = join(tmpRoot, 'Vault.sol');
+      writeFileSync(target, `// e2e line-shift probe\n${readFileSync(target, 'utf8')}`);
+
+      const shifted = (await analyzeProject(vaultConfig(tmpRoot))).state;
+      expect(shifted.traceability!.runs[0]!.id).not.toBe(run.id);
+
+      const repo = openRepo();
+      repo.saveState(state);
+
+      let thrown: unknown = undefined;
+      try {
+        repo.saveState(shifted);
+      } catch (error) {
+        thrown = error;
+      }
+      expect(isReconError(thrown)).toBe(true);
+      if (!isReconError(thrown)) throw new Error('expected ReconError from the second save');
+      expect(thrown.code).toBe('DuplicateCanonicalEntity');
+      expect(thrown.message).toContain(
+        'Contract contract:vault_sol:vault already exists with different content',
+      );
+
+      const loaded = repo.loadState();
+      expect(loaded).not.toBeNull();
+      expect(loaded!.traceability!.runs.map((item) => item.id)).toEqual([run.id]);
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

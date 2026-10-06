@@ -448,6 +448,17 @@ Two further traceability-specific failure modes, both
 - **Flat extraction topology.** Forward traversal does not chain
   fact→relationship; `trace(both) == traceBackward` for pipeline states (see
   Traversal).
+- **Multi-run saves require span-stable source edits.** Canonical entity rows
+  are immutable (`saveState` has no DELETE/UPDATE path for entities — the
+  Phase-1/2 "never overwrite" rule), while stable ids (`sourceContractId` and
+  peers) carry content-varying `source` spans. A second analysis whose edits
+  shift existing entity spans (prepending or inserting lines above them)
+  therefore throws `DuplicateCanonicalEntity` on save and rolls the whole
+  transaction back atomically — loud rejection, no silent data loss. EOF /
+  append-safe edits keep spans stable and co-persist across runs
+  (`e2e.test.ts:477`); the rejection is pinned at `e2e.test.ts:557`. Until
+  Phase-3 entity row versioning lands, multi-run history supports only edits
+  that do not shift existing entity spans.
 - **`getRun` tie-break.** Current-run match first, else lexicographically
   greatest `run_id`; `undefined` when no derivation lists the object. Runs
   sharing an identical `output_hash` all qualify as current (validation
