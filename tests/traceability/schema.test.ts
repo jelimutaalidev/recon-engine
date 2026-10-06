@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import { compareCodeUnits } from '../../src/util/canonical.js';
 import { createReconState, serializeReconState } from '../../src/recon-state/state.js';
 import type { ReconStateInput } from '../../src/recon-state/schema.js';
 import { createContract } from '../../src/domain/contract.js';
@@ -225,7 +226,7 @@ function traceIssues(details: ReconErrorDetails): TraceIssue[] {
 }
 
 function byId(a: { id: string }, b: { id: string }): number {
-  return a.id.localeCompare(b.id);
+  return compareCodeUnits(a.id, b.id);
 }
 
 describe('traceability schema', () => {

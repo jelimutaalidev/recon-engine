@@ -1,4 +1,5 @@
 import { ReconError } from '../errors/errors.js';
+import { compareCodeUnits } from '../util/canonical.js';
 import {
   assetId,
   contractId,
@@ -59,7 +60,7 @@ function collectProvenance(state: ReconState): Provenance[] {
       registry.set(record.id, record);
     }
   }
-  return [...registry.values()].sort((a, b) => a.id.localeCompare(b.id));
+  return [...registry.values()].sort((a, b) => compareCodeUnits(a.id, b.id));
 }
 
 function collectSpanSourceFiles(state: ReconState): Set<string> {
@@ -169,6 +170,12 @@ function assertEntityIdentity(state: ReconState): void {
       dependencyId({ name: dependency.name, chainId: dependency.chain_id, address: dependency.address }),
     );
   }
+  for (const relationship of state.relationships) assertUnique(relationship.id, 'Relationship');
+  for (const fact of state.facts) assertUnique(fact.id, 'Fact');
+  for (const observation of state.observations) assertUnique(observation.id, 'Observation');
+  for (const assumption of state.assumptions) assertUnique(assumption.id, 'Assumption');
+  for (const hypothesis of state.hypotheses) assertUnique(hypothesis.id, 'Hypothesis');
+  for (const evidence of state.evidence) assertUnique(evidence.id, 'Evidence');
 }
 
 function assertEpistemicConfidence(state: ReconState): void {

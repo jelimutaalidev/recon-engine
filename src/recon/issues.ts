@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { parseOrThrow } from '../domain/helpers.js';
+import { compareCodeUnits } from '../util/canonical.js';
 
 export const issueSeveritySchema = z.enum(['FATAL', 'RECOVERABLE', 'UNKNOWN', 'UNSUPPORTED']);
 
@@ -30,11 +31,11 @@ export function sortIssues(issues: readonly ReconIssue[]): ReconIssue[] {
   return [...issues].sort(
     (a, b) =>
       SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] ||
-      a.code.localeCompare(b.code) ||
-      (a.file ?? '').localeCompare(b.file ?? '') ||
+      compareCodeUnits(a.code, b.code) ||
+      compareCodeUnits(a.file ?? '', b.file ?? '') ||
       (a.line_start ?? 0) - (b.line_start ?? 0) ||
       (a.line_end ?? 0) - (b.line_end ?? 0) ||
       (a.count ?? 0) - (b.count ?? 0) ||
-      a.message.localeCompare(b.message),
+      compareCodeUnits(a.message, b.message),
   );
 }

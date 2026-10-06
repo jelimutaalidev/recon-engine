@@ -1,5 +1,6 @@
 import type { Relationship } from './relationship.js';
 import type { RelationshipType } from './types.js';
+import { compareCodeUnits } from '../util/canonical.js';
 
 export interface GraphIndex {
   getRelationshipsFrom(entityId: string): Relationship[];
@@ -9,7 +10,7 @@ export interface GraphIndex {
 }
 
 function sortById(relationships: readonly Relationship[]): Relationship[] {
-  return [...relationships].sort((a, b) => a.id.localeCompare(b.id));
+  return [...relationships].sort((a, b) => compareCodeUnits(a.id, b.id));
 }
 
 export function buildGraphIndex(relationships: readonly Relationship[]): GraphIndex {
@@ -43,9 +44,9 @@ export function buildGraphIndex(relationships: readonly Relationship[]): GraphIn
     }
   }
 
-  for (const list of outgoing.values()) list.sort((a, b) => a.id.localeCompare(b.id));
-  for (const list of incoming.values()) list.sort((a, b) => a.id.localeCompare(b.id));
-  for (const list of byType.values()) list.sort((a, b) => a.id.localeCompare(b.id));
+  for (const list of outgoing.values()) list.sort((a, b) => compareCodeUnits(a.id, b.id));
+  for (const list of incoming.values()) list.sort((a, b) => compareCodeUnits(a.id, b.id));
+  for (const list of byType.values()) list.sort((a, b) => compareCodeUnits(a.id, b.id));
 
   function otherEnd(relationship: Relationship, nodeId: string): string {
     return relationship.source_id === nodeId ? relationship.target_id : relationship.source_id;

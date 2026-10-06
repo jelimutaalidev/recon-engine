@@ -206,6 +206,52 @@ describe('ReconState', () => {
     );
   });
 
+  it('rejects normalization-aliased source contracts that collide on a case-folded name', () => {
+    const base = baseFixture();
+    const upper = createContract({ name: 'Guard', source_file: 'src/Collide.sol', contract_type: 'vault' });
+    const lower = createContract({ name: 'guard', source_file: 'src/Collide.sol', contract_type: 'vault' });
+    expect(lower.id).toBe(upper.id);
+    expectReconCode(
+      () => createReconState({ ...base, contracts: [...(base.contracts ?? []), upper, lower] }),
+      'DuplicateCanonicalEntity',
+    );
+  });
+
+  it('rejects a duplicated content-addressed entry in any collection', () => {
+    const base = baseFixture();
+    const dupEntry = <K extends keyof ReconStateInput>(
+      key: K,
+      items: readonly { id: string }[],
+    ): ReconStateInput => {
+      if (items.length === 0) throw new Error(`fixture missing ${String(key)}`);
+      return { ...base, [key]: [...items, items[0]] } as ReconStateInput;
+    };
+    expectReconCode(
+      () => createReconState(dupEntry('relationships', base.relationships ?? [])),
+      'DuplicateCanonicalEntity',
+    );
+    expectReconCode(
+      () => createReconState(dupEntry('facts', base.facts ?? [])),
+      'DuplicateCanonicalEntity',
+    );
+    expectReconCode(
+      () => createReconState(dupEntry('observations', base.observations ?? [])),
+      'DuplicateCanonicalEntity',
+    );
+    expectReconCode(
+      () => createReconState(dupEntry('assumptions', base.assumptions ?? [])),
+      'DuplicateCanonicalEntity',
+    );
+    expectReconCode(
+      () => createReconState(dupEntry('hypotheses', base.hypotheses ?? [])),
+      'DuplicateCanonicalEntity',
+    );
+    expectReconCode(
+      () => createReconState(dupEntry('evidence', base.evidence ?? [])),
+      'DuplicateCanonicalEntity',
+    );
+  });
+
   it('rejects an observation whose basis fact is missing', () => {
     const base = baseFixture();
     expectReconCode(
@@ -356,5 +402,34 @@ describe('ReconState serialization', () => {
 
   it('rejects JSON that is not an object', () => {
     expectReconCode(() => deserializeReconState('[1, 2]'), 'SchemaValidationFailed');
+  });
+
+  it('orders serialized collections by code-unit, not by locale collation', () => {
+    const base = baseFixture();
+    const fixtureContractId = base.contracts?.[0]?.id;
+    if (fixtureContractId === undefined) throw new Error('fixture missing contract');
+    const zebra = createStateVariable({
+      contract_id: fixtureContractId,
+      name: 'Zebra',
+      type: 'uint256',
+      visibility: 'public',
+    });
+    const alpha = createStateVariable({
+      contract_id: fixtureContractId,
+      name: 'alpha',
+      type: 'uint256',
+      visibility: 'public',
+    });
+    const json = serializeReconState(
+      createReconState({
+        ...base,
+        state_variables: [...(base.state_variables ?? []), zebra, alpha],
+      }),
+    );
+    const zebraIndex = json.indexOf(zebra.id);
+    const alphaIndex = json.indexOf(alpha.id);
+    expect(zebraIndex).toBeGreaterThan(-1);
+    expect(alphaIndex).toBeGreaterThan(-1);
+    expect(zebraIndex).toBeLessThan(alphaIndex);
   });
 });

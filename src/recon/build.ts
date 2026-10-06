@@ -13,6 +13,7 @@ import {
   type InputManifestPayload,
 } from '../traceability/identities.js';
 import { ANALYZER_VERSION } from '../version.js';
+import { compareCodeUnits } from '../util/canonical.js';
 import type { ReconConfig } from './config.js';
 import type { StatePatch } from './extract/index.js';
 import { gitToplevelMatches, runGit } from './git.js';
@@ -51,7 +52,7 @@ export function resolveProjectRepository(
 }
 
 function sortById<T extends { id: string }>(items: readonly T[]): T[] {
-  return [...items].sort((a, b) => a.id.localeCompare(b.id));
+  return [...items].sort((a, b) => compareCodeUnits(a.id, b.id));
 }
 
 export interface BuildStateInput {

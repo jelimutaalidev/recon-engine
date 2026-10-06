@@ -23,3 +23,7 @@ function canonicalize(value: unknown): unknown {
 export function sortedIds(values: readonly string[]): string[] {
   return [...values].sort();
 }
+
+export function compareCodeUnits(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}

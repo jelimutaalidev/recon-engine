@@ -1,5 +1,6 @@
 import { ReconError } from '../errors/errors.js';
 import { parseOrThrow } from '../domain/helpers.js';
+import { compareCodeUnits } from '../util/canonical.js';
 import { ReconStateSchema, type ReconState, type ReconStateInput } from './schema.js';
 import { validateReconState } from './validate.js';
 import type { RunOutputRecord } from '../traceability/types.js';
@@ -14,14 +15,14 @@ export function createReconState(input: ReconStateInput): ReconState {
 }
 
 function sortCollection<T extends { id: string }>(items: readonly T[]): T[] {
-  return [...items].sort((a, b) => a.id.localeCompare(b.id));
+  return [...items].sort((a, b) => compareCodeUnits(a.id, b.id));
 }
 
 function compareOutputs(a: RunOutputRecord, b: RunOutputRecord): number {
   return (
-    a.run_id.localeCompare(b.run_id) ||
-    a.entity_type.localeCompare(b.entity_type) ||
-    a.entity_id.localeCompare(b.entity_id)
+    compareCodeUnits(a.run_id, b.run_id) ||
+    compareCodeUnits(a.entity_type, b.entity_type) ||
+    compareCodeUnits(a.entity_id, b.entity_id)
   );
 }
 
