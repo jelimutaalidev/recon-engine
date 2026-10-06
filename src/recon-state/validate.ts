@@ -381,6 +381,7 @@ function assertTraceability(state: ReconState): void {
     const key = `${output.run_id}|${output.entity_type}|${output.entity_id}`;
     if (outputKeys.has(key)) duplicateOutputs.push(key);
     outputKeys.add(key);
+    if (!runIds.has(output.run_id)) add(key, [output.run_id]);
     if (!materialTypes.includes(output.entity_type)) {
       nonMaterialOutputs.push({ source: key, entity_type: output.entity_type });
     }

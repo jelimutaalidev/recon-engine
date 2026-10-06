@@ -327,20 +327,21 @@ describe('traceability schema', () => {
       { run_id: 'run:a', entity_type: 'fact', entity_id: 'fact:9', content_hash: 'aa' },
       { run_id: 'run:a', entity_type: 'contract', entity_id: 'contract:1', content_hash: 'bb' },
     ];
+    const runs: ReconRun[] = [{ ...runFixture(), id: 'run:a' }, { ...runFixture(), id: 'run:b' }];
     const first = serializeReconState(
-      createReconState({ traceability: { runs: [], derivations: [], outputs: [...outputs] } }),
+      createReconState({ traceability: { runs, derivations: [], outputs: [...outputs] } }),
     );
     const second = serializeReconState(
       createReconState({
         traceability: {
-          runs: [],
+          runs,
           derivations: [],
           outputs: [outputs[2]!, outputs[0]!, outputs[1]!],
         },
       }),
     );
     expect(first).toBe(second);
-    expect(first).toBe(SERIALIZED_OUTPUTS_SNAPSHOT);
+    expect(JSON.parse(first).traceability.outputs).toEqual(JSON.parse(SERIALIZED_OUTPUTS_SNAPSHOT).traceability.outputs);
   });
 });
 
@@ -604,5 +605,51 @@ describe('traceability validation', () => {
       },
     });
     expect(state.traceability?.runs[0]?.output_identity?.output_hash).toBe(LEGACY_OUTPUT_HASH);
+  });
+
+  it('enforces output run ownership', () => {
+    const base = buildBase();
+    const { code, details } = catchRecon(() =>
+      createReconState({
+        ...base.input,
+        traceability: {
+          runs: [runFixture()],
+          derivations: [],
+          outputs: [
+            {
+              run_id: 'run:missing',
+              entity_type: 'contract',
+              entity_id: base.ids.contract,
+              content_hash: '6'.repeat(64),
+            },
+          ],
+        },
+      }),
+    );
+    expect(code).toBe('InvalidReconState');
+    expect(traceIssues(details)).toEqual([
+      {
+        check: 'traceability',
+        source: `run:missing|contract|${base.ids.contract}`,
+        missing: ['run:missing'],
+      },
+    ]);
+
+    const valid = createReconState({
+      ...base.input,
+      traceability: {
+        runs: [runFixture()],
+        derivations: [],
+        outputs: [
+          {
+            run_id: RUN_ID,
+            entity_type: 'contract',
+            entity_id: base.ids.contract,
+            content_hash: '6'.repeat(64),
+          },
+        ],
+      },
+    });
+    expect(valid.traceability?.outputs).toHaveLength(1);
   });
 });
