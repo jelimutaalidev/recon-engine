@@ -22,7 +22,8 @@ export type ReconErrorCode =
   | 'CompilerUnavailable'
   | 'VersionConflict'
   | 'ChecksumMismatch'
-  | 'CompilationFailed';
+  | 'CompilationFailed'
+  | 'InvalidScopeReport';
 
 export interface ReconErrorDetails {
   [key: string]: unknown;

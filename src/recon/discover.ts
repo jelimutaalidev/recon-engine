@@ -12,9 +12,9 @@ export interface DiscoveredFile {
   bytes: number;
 }
 
-const ALWAYS_EXCLUDED_DIRS = new Set(['.git', 'node_modules', '.recon-cache']);
+export const ALWAYS_EXCLUDED_DIRS = new Set(['.git', 'node_modules', '.recon-cache']);
 
-function globToRegExp(pattern: string): RegExp {
+export function globToRegExp(pattern: string): RegExp {
   let source = '';
   for (let index = 0; index < pattern.length; index += 1) {
     const char = pattern[index] as string;
@@ -54,14 +54,14 @@ function escapeIssue(relativePath: string): ReconIssue {
   });
 }
 
-function assertInsideRoot(realRoot: string, absolutePath: string, relativePath: string): void {
+export function assertInsideRoot(realRoot: string, absolutePath: string, relativePath: string): void {
   if (absolutePath !== realRoot && !absolutePath.startsWith(realRoot + sep)) {
     const issue = escapeIssue(relativePath);
     throw new ReconError('RootEscape', issue.message, { path: relativePath, issue });
   }
 }
 
-function sortPaths<T>(records: readonly T[], pick: (record: T) => string): T[] {
+export function sortPaths<T>(records: readonly T[], pick: (record: T) => string): T[] {
   return [...records].sort((a, b) => {
     const left = pick(a);
     const right = pick(b);
