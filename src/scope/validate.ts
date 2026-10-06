@@ -3,7 +3,7 @@ import { spanFile } from '../recon/extract/types.js';
 import type { ReconState } from '../recon-state/schema.js';
 import { compareCodeUnits } from '../util/canonical.js';
 import { computeOutputIdentity } from '../traceability/identities.js';
-import { hasCompilationFailed, hasUnknown } from './evidence.js';
+import { FALLBACK_CODE, hasCompilationFailed, hasUnknown } from './evidence.js';
 import { computeCounts, computeMetrics } from './metrics.js';
 import type { EmbeddedIssue, ScopeEvidence, ScopeEntry, ScopeReport } from './model.js';
 import { scopeReportSchema } from './model.js';
@@ -11,6 +11,7 @@ import { scopeReportSchema } from './model.js';
 type Reason =
   | 'schema'
   | 'counts_inconsistent'
+  | 'entries_unsorted'
   | 'duplicate_entry'
   | 'path_not_root_relative'
   | 'issue_attribution'
@@ -23,6 +24,16 @@ type Reason =
   | 'fidelity_mismatch';
 
 const EXCLUDE_RULE_PREFIXES = ['config:excludes:', 'always:', 'type:'];
+
+// INV-3: allowed extras per status are explicit — anything else is contradicted.
+const ALLOWED_EVIDENCE_KINDS: Record<ScopeEntry['status'], ReadonlySet<ScopeEvidence['kind']>> = {
+  ANALYZED: new Set<ScopeEvidence['kind']>(['analysis', 'issue']),
+  UNRESOLVED: new Set<ScopeEvidence['kind']>(['analysis', 'issue']),
+  UNSUPPORTED: new Set<ScopeEvidence['kind']>(['issue']),
+  FAILED: new Set<ScopeEvidence['kind']>(['run_error']),
+  EXCLUDED: new Set<ScopeEvidence['kind']>(['exclude_rule', 'size_limit']),
+  NOT_FOUND: new Set<ScopeEvidence['kind']>(['walk_miss']),
+};
 
 function fail(reason: Reason, message: string): never {
   throw new ReconError('InvalidScopeReport', message, { reason });
@@ -93,6 +104,12 @@ function validateEntry(entry: ScopeEntry): void {
           `ANALYZED entry ${entry.path} carries compilation_failed evidence (INV-3)`,
         );
       }
+      if (issues.some((issue) => issue.code !== FALLBACK_CODE)) {
+        fail(
+          'evidence_contradicted',
+          `ANALYZED entry ${entry.path} carries a non-syntactic_fallback issue (INV-3, 5.1)`,
+        );
+      }
       if (has('run_error')) {
         fail('evidence_contradicted', `ANALYZED entry ${entry.path} carries run_error evidence (INV-3)`);
       }
@@ -137,6 +154,12 @@ function validateEntry(entry: ScopeEntry): void {
       if (rules === 0 && !has('size_limit')) {
         fail('evidence_missing', `EXCLUDED entry ${entry.path} lacks exclude_rule or size_limit evidence (5.1)`);
       }
+      if (entry.evidence.length !== 1) {
+        fail(
+          'evidence_contradicted',
+          `EXCLUDED entry ${entry.path} must carry exactly one exclusion evidence item (5.1: at most one rule)`,
+        );
+      }
       break;
     }
     case 'NOT_FOUND': {
@@ -144,6 +167,16 @@ function validateEntry(entry: ScopeEntry): void {
         fail('evidence_missing', `NOT_FOUND entry ${entry.path} lacks walk_miss evidence (5.1)`);
       }
       break;
+    }
+  }
+
+  const allowedKinds = ALLOWED_EVIDENCE_KINDS[entry.status];
+  for (const item of entry.evidence) {
+    if (!allowedKinds.has(item.kind)) {
+      fail(
+        'evidence_contradicted',
+        `entry ${entry.path} status ${entry.status} does not allow evidence kind '${item.kind}' (INV-3: allowed extras are explicit)`,
+      );
     }
   }
 }
@@ -191,6 +224,18 @@ export function validateScopeReport(report: unknown): ScopeReport {
         entries.length - counts.excluded
       } (INV-1)`,
     );
+  }
+
+  // §3: entries are code-unit sorted by path (0-based root-relative posix).
+  for (let i = 1; i < entries.length; i += 1) {
+    const prev = entries[i - 1];
+    const curr = entries[i];
+    if (prev !== undefined && curr !== undefined && compareCodeUnits(prev.path, curr.path) > 0) {
+      fail(
+        'entries_unsorted',
+        `entries not in code-unit path order: '${prev.path}' precedes '${curr.path}' (3.x)`,
+      );
+    }
   }
 
   for (const entry of entries) {

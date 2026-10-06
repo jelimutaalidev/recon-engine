@@ -14,6 +14,14 @@ const PROJECT_NAME = 'scope-golden';
 const GOLDEN_DIR = fileURLToPath(new URL('./golden/', import.meta.url));
 const REPO_ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '..', '..');
 const TMP = tmpdir();
+// Environment requirement (golden byte-identity): these tests are pinned to hosts
+// where os.tmpdir() resolves to a real directory literally at /tmp (Linux CI and the
+// blessing host). renameSync(fresh, FIXTURE_ROOT) above throws EXDEV across
+// filesystems, and macOS reports os.tmpdir() as /var/folders/... whose realpath is
+// /private/var/folders/... — different manifest bytes, so scope_hash/input_manifest_hash
+// would not match the frozen goldens. A TMPDIR override breaks Linux the same way.
+// Treat a run failing ONLY in these goldens with hash/scope_hash drift on a
+// non-blessed host as an environment mismatch, not a regression.
 const FIXTURE_ROOT = join(tmpdir(), 'recon-engine-scope-golden');
 const UPDATE_GOLDEN = process.env.UPDATE_GOLDEN === '1';
 const ISO_DATE = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;

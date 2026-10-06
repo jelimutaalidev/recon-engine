@@ -67,7 +67,7 @@ function draft(entries: readonly ScopeEntry[]): Omit<ScopeReport, 'scope_hash'> 
 }
 
 function fourStatuses(): ScopeEntry[] {
-  return [ANALYZED, EXCLUDED, NOT_FOUND, UNSUPPORTED];
+  return [ANALYZED, UNSUPPORTED, NOT_FOUND, EXCLUDED];
 }
 
 function withoutHash(report: ScopeReport): Omit<ScopeReport, 'scope_hash'> {

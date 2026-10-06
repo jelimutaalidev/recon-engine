@@ -18,10 +18,16 @@ export const targetTypeSchema = z.literal('source_file');
 export type TargetType = z.infer<typeof targetTypeSchema>;
 
 export const embeddedIssueSchema = z.strictObject({
-  code: z.string().trim().min(1),
+  code: z.string().min(1).refine((value) => value === value.trim(), {
+    message: 'code must not have leading or trailing whitespace',
+  }),
   severity: issueSeveritySchema,
-  message: z.string().trim().min(1),
-  file: z.string().trim().min(1),
+  message: z.string().min(1).refine((value) => value === value.trim(), {
+    message: 'message must not have leading or trailing whitespace',
+  }),
+  file: z.string().min(1).refine((value) => value === value.trim(), {
+    message: 'file must not have leading or trailing whitespace',
+  }),
   line_start: z.number().int().min(1).optional(),
   line_end: z.number().int().min(1).optional(),
   count: z.number().int().min(1),

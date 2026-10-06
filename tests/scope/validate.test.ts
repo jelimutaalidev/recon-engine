@@ -49,7 +49,7 @@ const FAILED = entry('FAILED', 'contracts/D.sol', [
 // INV-9-clean COMPLETED fixture: every rejected test using this base has exactly
 // one violation class, so asserted `reason` values never depend on check order.
 function fiveStatuses(): ScopeEntry[] {
-  return [ANALYZED, EXCLUDED, NOT_FOUND, UNRESOLVED, UNSUPPORTED];
+  return [ANALYZED, UNRESOLVED, UNSUPPORTED, NOT_FOUND, EXCLUDED];
 }
 
 function report(entries: ScopeEntry[], over: Partial<ScopeReport> = {}): ScopeReport {
@@ -86,13 +86,13 @@ function expectInvalid(value: unknown, reason: string): void {
 
 describe('validateScopeReport', () => {
   it('valid COMPLETED report round-trips with five target-accounting statuses', () => {
-    const valid = report([ANALYZED, EXCLUDED, NOT_FOUND, UNRESOLVED, UNSUPPORTED]);
+    const valid = report(fiveStatuses());
     expect(valid.counts.failed).toBe(0);
     expect(validateScopeReport(valid)).toEqual(valid);
   });
 
   it('valid FAILED report round-trips with failure statuses', () => {
-    const valid = failedReport([EXCLUDED, NOT_FOUND, UNSUPPORTED, FAILED]);
+    const valid = failedReport([UNSUPPORTED, FAILED, NOT_FOUND, EXCLUDED]);
     expect(valid.counts.analyzed).toBe(0);
     expect(valid.counts.unresolved).toBe(0);
     expect(valid.counts.failed).toBe(1);
@@ -140,7 +140,7 @@ describe('validateScopeReport', () => {
 
     it('UNRESOLVED without attributable UNKNOWN', () => {
       const entries = fiveStatuses();
-      entries[3] = entry('UNRESOLVED', 'contracts/B.sol', [
+      entries[1] = entry('UNRESOLVED', 'contracts/B.sol', [
         { kind: 'analysis', sha256: SHA },
         issueEvidence({ file: 'contracts/B.sol', code: 'syntactic_fallback', severity: 'RECOVERABLE' }),
       ]);
@@ -149,7 +149,7 @@ describe('validateScopeReport', () => {
 
     it('UNRESOLVED with other-file UNKNOWN evidence', () => {
       const entries = fiveStatuses();
-      entries[3] = entry('UNRESOLVED', 'contracts/B.sol', [
+      entries[1] = entry('UNRESOLVED', 'contracts/B.sol', [
         { kind: 'analysis', sha256: SHA },
         issueEvidence({ file: 'contracts/A.sol', severity: 'UNKNOWN' }),
       ]);
@@ -158,14 +158,14 @@ describe('validateScopeReport', () => {
 
     it('UNSUPPORTED without compilation_failed', () => {
       const entries = fiveStatuses();
-      entries[4] = entry('UNSUPPORTED', 'contracts/C.sol', [{ kind: 'analysis', sha256: SHA }]);
+      entries[2] = entry('UNSUPPORTED', 'contracts/C.sol', [{ kind: 'analysis', sha256: SHA }]);
       expectInvalid(report(entries), 'evidence_missing');
     });
 
     it('FAILED without run_error', () => {
       const brokenFailed = entry('FAILED', 'contracts/D.sol', [{ kind: 'analysis', sha256: SHA }]);
       expectInvalid(
-        failedReport([EXCLUDED, NOT_FOUND, UNSUPPORTED, brokenFailed]),
+        failedReport([UNSUPPORTED, brokenFailed, NOT_FOUND, EXCLUDED]),
         'evidence_missing',
       );
     });
@@ -189,12 +189,12 @@ describe('validateScopeReport', () => {
     });
 
     it('ANALYZED on FAILED report', () => {
-      const entries = [ANALYZED, EXCLUDED, NOT_FOUND, UNSUPPORTED, FAILED];
+      const entries = [ANALYZED, UNSUPPORTED, FAILED, NOT_FOUND, EXCLUDED];
       expectInvalid(failedReport(entries), 'run_binding');
     });
 
     it('UNRESOLVED on FAILED report', () => {
-      const entries = [EXCLUDED, NOT_FOUND, UNRESOLVED, UNSUPPORTED, FAILED];
+      const entries = [UNRESOLVED, UNSUPPORTED, FAILED, NOT_FOUND, EXCLUDED];
       expectInvalid(failedReport(entries), 'run_binding');
     });
 
@@ -221,6 +221,92 @@ describe('validateScopeReport', () => {
       const valid = report(fiveStatuses());
       const { clean_coverage: _omit, ...metricsWithoutCoverage } = valid.metrics;
       expectInvalid({ ...valid, metrics: metricsWithoutCoverage }, 'schema');
+    });
+
+    it('unsorted entries rejected', () => {
+      const sorted = fiveStatuses();
+      const shuffled = [sorted[1]!, sorted[0]!, ...sorted.slice(2)];
+      expectInvalid(report(shuffled), 'entries_unsorted');
+    });
+
+    it('EXCLUDED entry with two exclusion evidence items rejected', () => {
+      const entries = fiveStatuses().map((e) =>
+        e.path === 'vendor/V.sol'
+          ? entry('EXCLUDED', 'vendor/V.sol', [
+              { kind: 'exclude_rule', rule: 'config:excludes:vendor/**' },
+              { kind: 'size_limit', limit_bytes: 512 },
+            ])
+          : e,
+      );
+      expectInvalid(report(entries), 'evidence_contradicted');
+    });
+
+    it('evidence kinds outside the status whitelist rejected', () => {
+      const unsupportedWithAnalysis = fiveStatuses().map((e) =>
+        e.path === 'contracts/C.sol'
+          ? entry('UNSUPPORTED', 'contracts/C.sol', [
+              issueEvidence({ file: 'contracts/C.sol', code: 'compilation_failed' }),
+              { kind: 'analysis', sha256: SHA },
+            ])
+          : e,
+      );
+      expectInvalid(report(unsupportedWithAnalysis), 'evidence_contradicted');
+
+      const unresolvedWithRunError = fiveStatuses().map((e) =>
+        e.path === 'contracts/B.sol'
+          ? entry('UNRESOLVED', 'contracts/B.sol', [
+              { kind: 'analysis', sha256: SHA },
+              issueEvidence({ file: 'contracts/B.sol', severity: 'UNKNOWN' }),
+              { kind: 'run_error', stage: 'analysis', error_class: 'Boom', message: 'x' },
+            ])
+          : e,
+      );
+      expectInvalid(report(unresolvedWithRunError), 'evidence_contradicted');
+
+      const excludedWithRunError = fiveStatuses().map((e) =>
+        e.path === 'vendor/V.sol'
+          ? entry('EXCLUDED', 'vendor/V.sol', [
+              { kind: 'exclude_rule', rule: 'config:excludes:vendor/**' },
+              { kind: 'run_error', stage: 'analysis', error_class: 'Boom', message: 'x' },
+            ])
+          : e,
+      );
+      expectInvalid(report(excludedWithRunError), 'evidence_contradicted');
+
+      const analyzedWithWalkMiss = fiveStatuses().map((e) =>
+        e.path === 'contracts/A.sol'
+          ? entry('ANALYZED', 'contracts/A.sol', [
+              { kind: 'analysis', sha256: SHA },
+              { kind: 'walk_miss', include: 'contracts/A.sol' },
+            ])
+          : e,
+      );
+      expectInvalid(report(analyzedWithWalkMiss), 'evidence_contradicted');
+    });
+
+    it('ANALYZED entry with a non-syntactic_fallback issue rejected', () => {
+      const entries = fiveStatuses().map((e) =>
+        e.path === 'contracts/A.sol'
+          ? entry('ANALYZED', 'contracts/A.sol', [
+              { kind: 'analysis', sha256: SHA },
+              issueEvidence({ file: 'contracts/A.sol' }),
+            ])
+          : e,
+      );
+      expectInvalid(report(entries), 'evidence_contradicted');
+    });
+
+    it('FAILED entry with a non-run_error extra rejected', () => {
+      const failedWithIssue = failedReport([
+        UNSUPPORTED,
+        entry('FAILED', 'contracts/D.sol', [
+          { kind: 'run_error', stage: 'compile', error_class: 'CompilationFailed', message: 'boom' },
+          issueEvidence({ file: 'contracts/D.sol', code: 'compilation_failed' }),
+        ]),
+        NOT_FOUND,
+        EXCLUDED,
+      ]);
+      expectInvalid(failedWithIssue, 'evidence_contradicted');
     });
   });
 

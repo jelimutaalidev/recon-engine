@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { scopeReportSchema, scopeStatusSchema, stageSchema } from '../../src/scope/model.js';
+import {
+  embeddedIssueSchema,
+  scopeReportSchema,
+  scopeStatusSchema,
+  stageSchema,
+} from '../../src/scope/model.js';
 
 const SHA = 'a'.repeat(64);
 
@@ -32,6 +37,21 @@ const minimalReport = {
 describe('scope report model', () => {
   it('valid minimal report parses', () => {
     expect(scopeReportSchema.parse(minimalReport)).toEqual(minimalReport);
+  });
+
+  it('rejects whitespace-padded embedded-issue strings instead of trimming them', () => {
+    const base = {
+      code: 'call_target_unresolved',
+      severity: 'RECOVERABLE' as const,
+      message: 'msg',
+      file: 'src/A.sol',
+      count: 1,
+    };
+    expect(() => embeddedIssueSchema.parse({ ...base, code: ' call_target_unresolved' })).toThrow();
+    expect(() => embeddedIssueSchema.parse({ ...base, message: 'msg ' })).toThrow();
+    expect(() => embeddedIssueSchema.parse({ ...base, file: ' src/A.sol' })).toThrow();
+    expect(() => embeddedIssueSchema.parse({ ...base, message: '   ' })).toThrow();
+    expect(embeddedIssueSchema.parse(base)).toEqual(base);
   });
 
   it('unknown keys rejected', () => {
