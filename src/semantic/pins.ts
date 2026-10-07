@@ -54,3 +54,12 @@ export const LP_PINS: readonly string[] = [
   // OD-8: derived from fixtures/solidity/semantics/amm ABI, LP surface
   'removeLiquidity(uint256)',
 ];
+
+// OD-8 fee-split surface (spec §8 fees_protocol_user): corpus-wide analysis
+// (all 9 corpora) observed exactly one fee-split function — LendingPool's
+// accrueFees, which writes two split destinations (protocolFees + userRebates).
+// No other corpus declares any fee-like signature; ambiguous ⇒ nothing added.
+export const FEE_PINS: readonly string[] = [
+  // OD-8: derived from fixtures/solidity/semantics/lending ABI, fee-split surface
+  'accrueFees(uint256)',
+];

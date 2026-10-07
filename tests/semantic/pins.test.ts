@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { parseReconConfig } from '../../src/recon/config.js';
 import { analyzeProject } from '../../src/recon/index.js';
-import { ERC20_PINS, DEBT_PINS, COLLATERAL_PINS, REWARD_PINS, LP_PINS } from '../../src/semantic/pins.js';
+import { ERC20_PINS, DEBT_PINS, COLLATERAL_PINS, REWARD_PINS, LP_PINS, FEE_PINS } from '../../src/semantic/pins.js';
 
 // OD-8 (spec §18): pins are grounded ONLY in corpus ABI evidence observed via
 // analyzeProject — never from general knowledge. This suite is the evidence
@@ -108,6 +108,8 @@ const PIN_LISTS: readonly PinListBinding[] = [
   { listName: 'COLLATERAL_PINS', pins: COLLATERAL_PINS },
   { listName: 'REWARD_PINS', pins: REWARD_PINS },
   { listName: 'LP_PINS', pins: LP_PINS },
+  // Task 6 (OD-8 §8 fees) extension: the corpus-verified fee-split surface.
+  { listName: 'FEE_PINS', pins: FEE_PINS },
 ];
 
 const PINS_MODULE_PATH = fileURLToPath(new URL('../../src/semantic/pins.ts', import.meta.url));
