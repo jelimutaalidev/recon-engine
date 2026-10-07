@@ -1,4 +1,4 @@
-// OD-8 (spec §7 C3): pin lists are grounded ONLY in Task 15 corpus ABI
+// OD-8 (spec §7 C3, §9 E6, §10 F1): pin lists are grounded ONLY in corpus ABI
 // observations (tests/semantic/pins.test.ts evidence gate asserts every entry
 // was observed in >=1 corpus analysis). Every entry cites its corpus source.
 //
@@ -14,6 +14,8 @@
 //     debt-ledger write surface instead of inventing getter signatures.
 //   - receipt: no brief-declared list; staking receipt surface
 //     (`receiptOf`/`totalReceipts`) is likewise getter-only (unobservable).
+//   - default_admin, guardian, multisig, timelock: no in-scope interface or
+//     contract declares/inherits a surface for these role kinds (OD-8 E6).
 
 export const ERC20_PINS: readonly string[] = [
   'transfer(address,uint256)',
@@ -63,3 +65,58 @@ export const FEE_PINS: readonly string[] = [
   // OD-8: derived from fixtures/solidity/semantics/lending ABI, fee-split surface
   'accrueFees(uint256)',
 ];
+
+// OD-8 E6 role pins: derived ONLY from in-scope role interfaces/contracts
+// actually declared/inherited in the corpus. Every entry corpus-cited.
+// Omitted role kinds (no corpus evidence): default_admin, guardian, multisig, timelock.
+
+// Owner role: IOwnable interface (roles/IOwnable.sol) + AdminVault owner storage
+export const OWNER_PINS: readonly string[] = [
+  // OD-8: derived from fixtures/solidity/semantics/roles/IOwnable ABI, owner surface
+  'owner()',
+  // OD-8: derived from fixtures/solidity/semantics/roles/IOwnable ABI, owner surface
+  'transferOwnership(address)',
+];
+
+// Admin role: IAdmin interface (roles/IAdmin.sol) + AdminVault implementation
+export const ADMIN_PINS: readonly string[] = [
+  // OD-8: derived from fixtures/solidity/semantics/roles/IAdmin ABI, admin surface
+  'setAdmin(address,bool)',
+  // OD-8: derived from fixtures/solidity/semantics/roles/IAdmin ABI, admin surface
+  'isAdmin(address)',
+];
+
+// Governance role: IGovernance interface (roles/IGovernance.sol) + Governance implementation
+export const GOVERNANCE_PINS: readonly string[] = [
+  // OD-8: derived from fixtures/solidity/semantics/roles/IGovernance ABI, governance surface
+  'submitProposal(bytes32)',
+  // OD-8: derived from fixtures/solidity/semantics/roles/IGovernance ABI, governance surface
+  'executeProposal(bytes32)',
+];
+
+// Upgrader role: Proxy contract (proxy/Proxy.sol) with upgrader storage + onlyUpgrader modifier
+export const UPGRADER_PINS: readonly string[] = [
+  // OD-8: derived from fixtures/solidity/semantics/proxy/Proxy ABI, upgrader surface
+  'upgradeTo(address)',
+];
+
+// Pauser role: LendingPool contract (lending/LendingPool.sol) with pauser storage + onlyPauser modifier
+export const PAUSER_PINS: readonly string[] = [
+  // OD-8: derived from fixtures/solidity/semantics/lending/LendingPool ABI, pauser surface
+  'setPaused(bool)',
+];
+
+// Keeper role: StakingPool contract (staking/StakingPool.sol) with keeper storage + onlyKeeper modifier
+export const KEEPER_PINS: readonly string[] = [
+  // OD-8: derived from fixtures/solidity/semantics/staking/StakingPool ABI, keeper surface
+  'notifyRewardAmount(uint256)',
+];
+
+// Relayer role: StakingPool contract (staking/StakingPool.sol) with relayer storage + onlyRelayer modifier
+export const RELAYER_PINS: readonly string[] = [
+  // OD-8: derived from fixtures/solidity/semantics/staking/StakingPool ABI, relayer surface
+  'syncRewards(uint256)',
+];
+
+// No corpus evidence for these role kinds — intentionally omitted per OD-8:
+// DEFAULT_ADMIN_PINS, GUARDIAN_PINS, MULTISIG_PINS, TIMELOCK_PINS

@@ -3,7 +3,21 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { parseReconConfig } from '../../src/recon/config.js';
 import { analyzeProject } from '../../src/recon/index.js';
-import { ERC20_PINS, DEBT_PINS, COLLATERAL_PINS, REWARD_PINS, LP_PINS, FEE_PINS } from '../../src/semantic/pins.js';
+import {
+  ERC20_PINS,
+  DEBT_PINS,
+  COLLATERAL_PINS,
+  REWARD_PINS,
+  LP_PINS,
+  FEE_PINS,
+  OWNER_PINS,
+  ADMIN_PINS,
+  GOVERNANCE_PINS,
+  UPGRADER_PINS,
+  PAUSER_PINS,
+  KEEPER_PINS,
+  RELAYER_PINS,
+} from '../../src/semantic/pins.js';
 
 // OD-8 (spec §18): pins are grounded ONLY in corpus ABI evidence observed via
 // analyzeProject — never from general knowledge. This suite is the evidence
@@ -110,6 +124,14 @@ const PIN_LISTS: readonly PinListBinding[] = [
   { listName: 'LP_PINS', pins: LP_PINS },
   // Task 6 (OD-8 §8 fees) extension: the corpus-verified fee-split surface.
   { listName: 'FEE_PINS', pins: FEE_PINS },
+  // Task 7 (OD-8 E6) extension: role pin lists grounded in corpus ABI evidence.
+  { listName: 'OWNER_PINS', pins: OWNER_PINS },
+  { listName: 'ADMIN_PINS', pins: ADMIN_PINS },
+  { listName: 'GOVERNANCE_PINS', pins: GOVERNANCE_PINS },
+  { listName: 'UPGRADER_PINS', pins: UPGRADER_PINS },
+  { listName: 'PAUSER_PINS', pins: PAUSER_PINS },
+  { listName: 'KEEPER_PINS', pins: KEEPER_PINS },
+  { listName: 'RELAYER_PINS', pins: RELAYER_PINS },
 ];
 
 const PINS_MODULE_PATH = fileURLToPath(new URL('../../src/semantic/pins.ts', import.meta.url));
