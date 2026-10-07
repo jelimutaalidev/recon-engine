@@ -1,8 +1,10 @@
 # Security Semantic & Economic Model Specification (Phase 4)
 
 **Status:** APPROVED (2026-10-07), including review amendment set F-01..F-14
-(commit `3847bf8`). Implementation may begin only under an approved
-implementation plan (OD table §21). Tracking issue: #5.
+(commit `3847bf8`) and IC-1 minimal §6 B7 ordering amendment (2026-10-07:
+`byteStart` → `(line_start, line_end, evidence-id)` — OD-1 state-only intake
+makes byte offsets unobtainable; ratified with W3). Implementation may begin
+only under an approved implementation plan (OD table §21). Tracking issue: #5.
 
 **Context:** Phase 4 "Security Semantic & Economic Model (SSEM)". Phase 3
 (Scope Accounting) closed at commit `de91051`; Phase 4 tracking issue #5
@@ -390,7 +392,7 @@ resolved.
 | B4 asset movements | Only from Layer C asset evidence + resolved in-scope call targets with E2 movement signature evidence (§7 rules) | movement records with `evidence_class` | no movement record (never guessed from verb-like names) |
 | B5 post-state observations | `EMITS` facts of the function (E1) | event fact ids as observations | absent ⇒ empty |
 | B6 fidelity | `meta.fidelity`, `dropped[]`, `unsupported_assembly` issues touching the function's file (E1) | `fidelity_flags ∈ {syntactic, assembly_skipped, file_dropped}` | function whose file was dropped ⇒ **no transition record** + `UnknownIndexEntry(reason: dropped_file)` |
-| B7 no ordering claims | — | arrays sorted by (span.file, span.byteStart) — declared source order | n/a |
+| B7 no ordering claims | — | arrays sorted by (span.file, span.line_start, span.line_end, evidence-id) — declared source order (line-based under OD-1 state-only intake; see IC-1) | n/a |
 
 Every transition must satisfy target attribution (SINV-8): at minimum
 `function_id` + `basis` referencing the function's state relationships/facts.
@@ -778,7 +780,7 @@ stop-on-spec-conflict remains in force for every task.
 
 | # | Decision | Recommendation | Rationale / alternative cost | Ref |
 |---|---|---|---|---|
-| OD-1 | IR access for the wrapper | **State-only intake for v1**; IR exposure (additive `AnalysisResult` field, T-2) deferred | ReconState already carries relationship metadata (`call_kind`), spans (provenance), modifiers, selectors, slots — enough for B–F; IR exposure is a foundation touch with serialization surface | §4.4, §6 |
+| OD-1 | IR access for the wrapper | **State-only intake for v1**; IR exposure (additive `AnalysisResult` field, T-2) deferred | ReconState already carries relationship metadata (`call_kind`), spans (provenance), modifiers, selectors, slots — enough for B–F; IR exposure is a foundation touch with serialization surface (consequence: §6 B7 ordering is line-based, IC-1) | §4.4, §6 |
 | OD-2 | Projecting artifact records into ReconState collections (`assets/roles/dependencies/epistemic`) | **Defer to a future approved projection phase** | population post-run breaks `output_hash` run binding + frozen scope goldens (§14.2); revisit when pipeline/identity policy is deliberately reopened | §14 |
 | OD-3 | `semantic_hash` binding fields (exclude `run_id`/`input_manifest_hash`/`scope_hash`) | **Exclude input-coupled fields; re-derive at validation (SINV-11)** | avoids host/root coupling (foundation issue #4); scope precedent hashes them but pays with host-coupled goldens | §13.3 |
 | OD-4 | Artifact persistence | **In-process return only** (Phase 3 OD-5 precedent) | sqlite tables would touch migrations (frozen); consumers are in-process for now | §4.3 |
