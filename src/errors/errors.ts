@@ -23,7 +23,8 @@ export type ReconErrorCode =
   | 'VersionConflict'
   | 'ChecksumMismatch'
   | 'CompilationFailed'
-  | 'InvalidScopeReport';
+  | 'InvalidScopeReport'
+  | 'InvalidSemanticModel';
 
 export interface ReconErrorDetails {
   [key: string]: unknown;
