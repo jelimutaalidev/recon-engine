@@ -1,12 +1,12 @@
 # Security Semantic & Economic Model Specification (Phase 4)
 
-**Status:** DRAFT for approval (2026-10-06). Not approved; no implementation may
-begin until this document is approved and an implementation plan is written and
-approved (OD table §21).
+**Status:** APPROVED (2026-10-07), including review amendment set F-01..F-14
+(commit `3847bf8`). Implementation may begin only under an approved
+implementation plan (OD table §21). Tracking issue: #5.
 
 **Context:** Phase 4 "Security Semantic & Economic Model (SSEM)". Phase 3
-(Scope Accounting) closed at commit `de91051`; GitHub issue to be filed on
-approval.
+(Scope Accounting) closed at commit `de91051`; Phase 4 tracking issue #5
+filed on approval.
 
 **Related documents:** `RECON_STATE_SPEC.md` (Phase 1, incl. §16 Agent Write
 Permissions); `docs/recon-layer-design.md` (Phase 2, §5 guardrails);
