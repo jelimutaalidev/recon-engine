@@ -55,9 +55,9 @@ for a future Recon Intelligence Agent phase; that phase is out of scope (§3).
 | **Semantic model** | The Phase 4 derived artifact (`semantic-model/v1`) | ReconState, a scan result, a report of findings |
 | **Semantic record** | One typed record inside the artifact | a fact proven by execution |
 | **Extraction fact** | A `Fact` already in ReconState (Phase 1/2, `VERIFIED`) | a semantic conclusion |
-| **Observation / Assumption / Hypothesis** | Phase 1 epistemic entities, reused **as schemas** (§14) | confirmation; `CONFIRMED` does not exist |
+| **Observation / Assumption / Hypothesis** | Artifact records **mirroring Phase 1 shapes** via artifact-local schemas (§5.3, §14) | confirmation; `CONFIRMED` does not exist; writes into ReconState |
 | **Candidate invariant** | A security property statement with basis chain and lifecycle status | a verified invariant, a finding, a vulnerability |
-| **UNKNOWN** | Issue severity and explicit unknown-field state (`src/recon/issues.ts:5`) | a scope status (scope uses `UNRESOLVED`, `docs/scope-accounting-spec.md:40`) |
+| **UNKNOWN** | Issue severity and explicit unknown-field state (`src/recon/issues.ts:5`) | a scope status (scope uses `UNRESOLVED`, `docs/scope-accounting-spec.md:40,213`) |
 | **Fidelity** | `semantic \| syntactic` compilation fidelity (Phase 2), propagated as model degradation flags | confidence in a semantic conclusion |
 
 Forbidden vocabulary in semantic output records: `vulnerable`, `exploit`,
@@ -81,7 +81,7 @@ a claim is an entitlement, not a code entity.
 ### 2.3 Evidence classes (E-classes) — the honesty mechanism
 
 Every semantic conclusion carries an evidence class. Classes never upgrade
-silently (§11.4, SINV-6).
+silently (§11.2.1, SINV-6).
 
 | Class | Definition | Sources |
 |---|---|---|
@@ -93,7 +93,7 @@ silently (§11.4, SINV-6).
 `treasury`), modifier invocation *names* (`onlyOwner`), string literals,
 event-name lookalikes, cross-project selector heuristics against out-of-scope
 targets. Phase 2 already holds this line: "onlyOwner is a structural fact, not
-a trust conclusion" (`docs/recon-layer-design.md:199-200`), and Phase 2 guardrail
+a trust conclusion" (`docs/recon-layer-design.md:202`), and Phase 2 guardrail
 §5 forbids name-matching conclusions. Out-of-scope dependency recognition by
 signature alone is E3 until OD-6 resolves otherwise.
 
@@ -157,7 +157,7 @@ state "P holds", "P is violated", or "X is dangerous".**
 and never returns a modified `state`; `computeOutputIdentity(state)`, scope
 report bytes, and traceability records are therefore unchanged by Phase 4
 (§17). Scope cross-check is read-only and mirrors Phase 3's
-`validateScopeReportWithState` pattern (`src/scope/validate.ts:283+`).
+`validateScopeReportWithState` pattern (`src/scope/validate.ts:328`).
 
 ### 4.2 Proposed module/file layout (deliverable 4)
 
@@ -221,7 +221,7 @@ analyzeProjectSemantic(config, opts?: { withScope?: boolean }): Promise<{
 collections, no field edits, no version bump (`recon-state/v1` untouched).
 
 **Frozen modules: NO CHANGES** to `src/traceability/**` (incl.
-`MATERIAL_ENTITY_TYPES` at `src/traceability/types.ts:84-96`), `src/scope/**`,
+`MATERIAL_ENTITY_TYPES` at `src/traceability/types.ts:90-96`), `src/scope/**`,
 `src/recon/**` extractors/IR/build, `src/epistemic/**`, `src/domain/**`,
 `migrations/**`.
 
@@ -239,9 +239,11 @@ Everything else is new code under `src/semantic/**` + tests + docs.
 `AssetRecord`, `CustodyRecord`, `ClaimRecord`, `AccountingRelation`,
 `AuthorityChain`, `ExternalDependency`, `TrustCapability`,
 `SemanticObservation`, `SemanticAssumption`, `SemanticHypothesis`,
-`CandidateInvariant`, `UnknownIndex` (§5). Epistemic records **reuse Phase 1
-zod schemas** where the shapes match (re-exported types; no edits to
-`src/epistemic/**`).
+`CandidateInvariant`, `UnknownIndex` (§5). Epistemic records use
+**artifact-local zod schemas mirroring Phase 1 shapes** (§5.3); no edits to
+`src/epistemic/**`, and no Phase 1 schema is parsed with substituted
+prefixes (its id/ref regexes would reject the `sem*` prefixes and its
+required `created_at` would violate SINV-10).
 
 ## 5. Layer A — Canonical semantic entities (semantic IR)
 
@@ -322,7 +324,8 @@ absence ⇒ `unknown` (never inferred from naming).
 **StateTransition** — §6.
 
 **AssetRecord** — projection-ready mirror of `AssetSchema`
-(`src/domain/asset.ts:12-20`): `name?`, `address?`, `chain_id?`,
+(`src/domain/asset.ts:12-20`): `name` (required — projection parity),
+`address?`, `chain_id?`,
 `asset_type ∈ ASSET_TYPES`, `decimals?`, `custody?`, `represents_asset_id?`
 (accounting representation link; state field is `underlying_asset_id` — field
 renamed here to make the representation direction explicit; projection maps it),
@@ -340,14 +343,19 @@ never facts (code proves representations and transfers, not entitlements).
 **ExternalDependency / TrustCapability** — §10.
 
 **Epistemic records** — `SemanticObservation` / `SemanticAssumption` /
-`SemanticHypothesis` conform to Phase 1 `Observation`/`Assumption`/`Hypothesis`
-schemas (`src/epistemic/*.ts`) with `id` prefixes above substituted at
-validation time; forced-confidence map reuses
-`EXPECTED_CONFIDENCE` semantics (`src/recon-state/validate.ts:31-36`):
+`SemanticHypothesis` are **artifact-local zod schemas that mirror** the Phase 1
+`Observation`/`Assumption`/`Hypothesis` shapes (`src/epistemic/*.ts`) with three
+declared divergences: (a) `id` regexes accept the §5.2 `semobs:`/`semasm:`/
+`semhyp:` prefixes (Phase 1 regexes are `^obs:`/`^asm:`/`^hyp:`); (b) `based_on`
+ref patterns accept the corresponding semantic prefixes (state `fact:` refs
+remain valid where cited); (c) **`created_at` is omitted** (determinism +
+SINV-10 — Phase 1's field defaults to a wall-clock ISO string). The
+forced-confidence map reuses `EXPECTED_CONFIDENCE` semantics
+(`src/recon-state/validate.ts:31-36`):
 `OBSERVATION→DERIVED`, `ASSUMPTION→INFERRED`, `HYPOTHESIS→SPECULATIVE`.
 
 **CandidateInvariant** — `{ id, statement, invariant_class ∈ {auth, custody,
-accounting, isolation, external_trust, temporal, other}, based_on: (asm|hyp|obs)
+accounting, isolation, external_trust, temporal, other}, based_on: (semasm|semhyp|semobs)
 refs ≥1, affected_entities: string[] (state ids), status ∈ {OPEN, SUPPORTED,
 WEAKENED, REJECTED}, notes? }`. Statement phrasing rule: a *property to check*,
 e.g. "totalShares never exceeds accounted underlying" — never "X is safe" and
@@ -378,7 +386,7 @@ resolved.
 |---|---|---|---|
 | B1 reads/writes | `READS`/`WRITES` relationships of `function_id` (E1) | populate sets; sort by state-var id | absent set = empty (proved by extraction, not by absence-of-record) |
 | B2 external effects | `CALLS` relationships + `metadata.call_kind` (E1/E2); unresolved-marker facts (E1) | effect with `target_ref` when resolved; else `target_evidence: E3`, `target_ref` absent | `UnknownIndexEntry(reason: unresolved_call \| out_of_scope_target)` |
-| B3 value handling | `stateMutability === 'payable'` (E1) | `value_handling` | n/a |
+| B3 value handling | `Function.mutability === 'payable'` (E1, `src/domain/function.ts:24`) | `value_handling` | n/a |
 | B4 asset movements | Only from Layer C asset evidence + resolved in-scope call targets with E2 movement signature evidence (§7 rules) | movement records with `evidence_class` | no movement record (never guessed from verb-like names) |
 | B5 post-state observations | `EMITS` facts of the function (E1) | event fact ids as observations | absent ⇒ empty |
 | B6 fidelity | `meta.fidelity`, `dropped[]`, `unsupported_assembly` issues touching the function's file (E1) | `fidelity_flags ∈ {syntactic, assembly_skipped, file_dropped}` | function whose file was dropped ⇒ **no transition record** + `UnknownIndexEntry(reason: dropped_file)` |
@@ -400,7 +408,7 @@ signature/inheritance sets over in-scope ABIs. Anything weaker ⇒ `asset_type:
 |---|---|---|---|
 | C1 asset candidate | State variable whose declared type resolves to an in-scope contract/interface (E1/E2) | candidate `AssetRecord` with `asset_type: 'unknown'` | non-typed (`address`) or out-of-scope type ⇒ **no record** + `UnknownIndexEntry(no_evidence)` |
 | C2 erc20 classification | In-scope interface/base ABI declares the pinned ERC20 signature subset (`transfer(address,uint256)`, `approve(address,uint256)`, `balanceOf(address)`, `transferFrom(address,address,uint256)`) (E2) | `asset_type: 'erc20'` | subset absent ⇒ remain `unknown` |
-| C3 representation classes | In-scope ABI declares pinned subsets: share (`convertToShares(uint256)`-family + `asset()`), debt (`totalDebt()`-family), collateral marker, reward (`earned(address)`-family), LP/receipt (`mint(uint256)`-family paired with C2 underlying) | `asset_type` + `represents_asset_id` when the underlying candidate co-occurs in the same contract's state (E2 pairing); exact signature lists pinned per OD-8 at plan time; extending recognition beyond in-scope compiled evidence requires OD-6 | unproven ⇒ `unknown` |
+| C3 representation classes | In-scope ABI declares pinned subsets: share (`convertToShares(uint256)`-family + `asset()`), debt (`totalDebt()`-family), collateral (pinned subset — OD-8), reward (`earned(address)`-family), LP/receipt (`mint(uint256)`-family paired with C2 underlying) | `asset_type` + `represents_asset_id` when the underlying candidate co-occurs in the same contract's state (E2 pairing); exact signature lists pinned per OD-8 at plan time; extending recognition beyond in-scope compiled evidence requires OD-6 | unproven ⇒ `unknown` |
 | C4 custody | Asset-typed state variable declared in contract X (E1) | `CustodyRecord{asset, X}` | no state-typed holder ⇒ absent (EOA custody unobservable) |
 | C5 claim | Holder-side: in-scope function reads holder's representation balance AND underlying entitlement surface exists (E2 pairing) | `ClaimRecord` (observation-level) | absent |
 | C6 native assets | Balance reads of `address(this).balance` are not modeled by IR | no native asset records in v1 | `UnknownIndexEntry(no_evidence)` at contract level when `payable` functions exist (hint only, no record) |
@@ -419,9 +427,9 @@ observation-epistemic record with `derivation` provenance:
 |---|---|---|
 | `assets_shares` | same contract holds C-classified asset + share representation AND ≥1 function's READS/WRITE set intersects both, or in-scope interface declares the conversion surface | `paired-storage` / `interface-structural` |
 | `debt_collateral` | C-classified debt + collateral candidates co-held with paired access | ditto |
-| `reserves_liquidity` | native/asset reserves state + LP representation co-held with paired access | ditto |
+| `reserves_liquidity` | C-classified asset (reserves proxy) + C-classified LP representation co-held with paired access; native balances are not modeled (C6) | ditto |
 | `rewards_eligible_stake` | reward classification + stake/receipt representation with distribution function pairing | ditto |
-| `fees_protocol_user` | fee-related asset variables with split destinations co-accessed | ditto (typically partial) |
+| `fees_protocol_user` | pinned in-scope fee-interface evidence (OD-8) over C-classified assets with split destinations co-accessed; no name-based "fee" detection | ditto (typically partial) |
 
 Fields: `{ id, relation_kind, endpoints[] (record ids), derivation, evidence_class:
 'E2', basis[], epistemic: 'observation', unknowns[] }`. **No pairing ⇒ no
@@ -442,12 +450,12 @@ impact }, per_link: [{ link_kind, evidence_class, basis, unknown? }], status:
 
 | Rule | Input (E-class) | Derivation | On failure |
 |---|---|---|---|
-| E1 actor | In-scope caller contract via resolved `CALLS` into the gated function (E2); owner-typed state variable (`address` written by the function — E1/E2) | actor link | external/unknown caller ⇒ link `evidence: E3`, `status: partial` — chain **kept but marked partial**, never completed by guessing |
+| E1 actor | In-scope caller contract via resolved `CALLS` into the gated function (E2). A written address state variable is **not** actor identity: when its declared type resolves to an in-scope ownership interface (E2) it links as a *stored-authority-subject* observation; plain address writes yield no actor evidence (written values are unknown, §6) | actor link / stored-subject link | external/unknown caller ⇒ link `evidence: E3`, `status: partial` — chain **kept but marked partial**, never completed by guessing |
 | E2 authority | (a) in-scope inherited role interface/base with role-typed storage (E2); (b) role/authority declarations with E2 backing | `authority_kind ∈ ROLE_TYPES` (`src/domain/enums.ts:53-67`) or `'unknown'` | modifier invocation text alone (E1 structural) ⇒ `authority_kind: 'unknown'` + observation "modifier M gates f" (structural) |
-| E3 gate structure | `Function.modifiers[]`, visibility, `stateMutability` (E1) | gate descriptor record | — |
+| E3 gate structure | `Function.modifiers[]`, visibility, `mutability` (E1, `src/domain/function.ts:24`) | gate descriptor record | — |
 | E4 function & transition | `function_id`; transition from Layer B if present | link | dropped/absent transition ⇒ link to function only + unknown entry |
 | E5 impact | transition `asset_movements` + `external_effects` (Layer B/C) | impact link typed by what the transition structurally does | no movements/effects ⇒ impact `unknown` |
-| E6 role vocabulary sources | `governance`/`multisig`/`timelock`/`upgrader`/`pauser`/`guardian`/`keeper`/`relayer` typed **only** via in-scope interface/inheritance evidence (E2) | classification | any weaker signal ⇒ `'unknown'` — **`onlyOwner`-style names never classify authority** (§2.3; `docs/recon-layer-design.md:199-200`) |
+| E6 role vocabulary sources | `owner`/`admin`/`default_admin`/`governance`/`multisig`/`timelock`/`upgrader`/`pauser`/`guardian`/`keeper`/`relayer` typed **only** via in-scope interface/inheritance evidence (E2); interface→kind pins are OD-8 (unpinned ⇒ `'unknown'`) | classification | any weaker signal ⇒ `'unknown'` — **`onlyOwner`-style names never classify authority** (§2.3; `docs/recon-layer-design.md:202`) |
 
 An un-gated public function yields the observation "no gate observed on f"
 (E1 basis: empty modifier list + public visibility) — phrased as absence of
@@ -463,7 +471,7 @@ observation; any downstream "callable by anyone" statement is an
 
 | Rule | Input (E-class) | Derivation | On failure |
 |---|---|---|---|
-| F1 dependency candidate | Call target / typed state var whose type or resolved ref names an out-of-scope or in-scope external contract (E1/E2) | `ExternalDependency` with `dependency_type ∈ DEPENDENCY_TYPES` or `'unknown'` | unresolved target (E3) ⇒ no dependency record; `UnknownIndexEntry(out_of_scope_target)` |
+| F1 dependency candidate | Named call target / typed state var resolving to an out-of-scope or in-scope external contract (E1/E2) | `ExternalDependency` with `dependency_type` assigned **only** by a pinned in-scope interface/inheritance mapping (OD-8, extended to F1); everything else ⇒ `'unknown'` — no name-based type assignment (§2.3) | unresolved target, no named ref (E3) ⇒ no dependency record; `UnknownIndexEntry(out_of_scope_target)` |
 | F2 observed capability | Outbound `CALLS`/low-level markers toward the dependency (E1/E2), with `call_kind` | `TrustCapability{ direction: 'observed', capabilities[] }` | — |
 | F3 consumed capability | Inbound surface: `public`/`external` functions whose parameters accept addresses/calldata callbacks AND in-scope hook/callback interfaces (E2) | `direction: 'consumed'` capability | not provable ⇒ field `unknown` (record still emitted when F1 held, with `UnknownIndexEntry(no_evidence)`) |
 | F4 trust assumption | Always a `SemanticAssumption` (`epistemic: INFERRED`, status `OPEN`) referencing the capability + relevant observations | assumption link on the capability (`trust_assumption_ref`) | capability without assumption ⇒ SINV failure (trust is never implicit) |
@@ -487,8 +495,9 @@ FACT ──► OBSERVATION ──► SECURITY ASSUMPTION ──► CANDIDATE INV
   basis); Phase 4 never mints extraction facts into state (§14).
 - **OBSERVATION**: structural reading of facts + entities (e.g., "f writes
   owner slot and is modifier-gated", "contract holds asset A and representation
-  S with paired access"). `based_on ≥1` state fact ids, else provenance-span
-  records copied byte-identically from state entities (§12).
+  S with paired access"). `based_on ≥1` state fact ids, else provenance records
+  copied byte-identically from ReconState's provenance registry or embedded
+  fact/relationship provenance (§12.3).
 - **SECURITY ASSUMPTION**: an imported/posited security-relevant belief
   (e.g., "oracle O is assumed fresh", "entrypoint f is assumed permissionless").
   `based_on ≥1` observations. Status lifecycle `OPEN|SUPPORTED|WEAKENED|REJECTED`.
@@ -517,8 +526,9 @@ FACT ──► OBSERVATION ──► SECURITY ASSUMPTION ──► CANDIDATE INV
 ## 12. Layer H — Provenance and evidence rules
 
 1. **Every** semantic record carries `basis ≥1` (SINV-3): references to state
-   entities, relationships, facts, issues, or other artifact records with a
-   resolvable chain to state-rooted evidence (SINV-4/SINV-5).
+   entities, relationships, facts, issues, provenance records (byte-copied,
+   §12.3), or other artifact records with a resolvable chain to state-rooted
+   evidence (SINV-4/SINV-5).
 2. **Transitive provenance:** artifact epistemic records resolve provenance by
    walking `based_on` to roots that carry `provenance[] ≥1` (state facts,
    relationships, entity spans). Validator computes this closure.
@@ -593,7 +603,7 @@ empty until a future, explicitly approved projection phase (OD-2).
 
 1. **Run-binding breakage (decisive).** Phase 3's
    `validateScopeReportWithState` looks up the current run by
-   `computeOutputIdentity(current_state)` (`src/scope/validate.ts:315-331`), and
+   `computeOutputIdentity(current_state)` (`src/scope/validate.ts:360-371`), and
    traceability stores per-run `output_identity` immutably (T5,
    `docs/traceability.md:324-338`). Populating `assets/roles/dependencies/
    observations…` after run creation changes `serializeReconState` ⇒ changed
@@ -622,8 +632,10 @@ empty until a future, explicitly approved projection phase (OD-2).
 |---|---|---|
 | Extraction facts, relationships, entities, provenance | ReconState (read-only) | Phase 1/2 owns them |
 | Semantic structure (transitions, custody, accounting, authority, trust) | artifact | no matching collections; mutation forbidden (14.2) |
-| Observations / assumptions / hypotheses | artifact (Phase 1 schemas reused) | writing state would change `output_hash` |
+| Observations / assumptions / hypotheses | artifact (Phase 1 shapes mirrored) | writing state would change `output_hash` |
 | Candidate invariants | artifact | no Phase 1 collection exists; creating one = schema expansion (OD-5) |
+| ContractSemantics (layer A) | artifact | derived structure over state contracts; no state collection accepts it |
+| UnknownIndexEntry ledger (§13.5) | artifact | unknowns are artifact-local; state issues untouched |
 | Future projection of `assets/roles/dependencies/observations…` into state | deferred | OD-2 |
 
 ## 15. Layer K — Validation invariants (SINV)
@@ -635,16 +647,16 @@ empty until a future, explicitly approved projection phase (OD-2).
 |---|---|---|
 | SINV-1 | strict zod schema; `schema_version === 'semantic-model/v1'`; status/failure exclusivity | `schema` |
 | SINV-2 | id uniqueness; every collection code-unit sorted; counts match lengths | `ids_unsorted` |
-| SINV-3 | every record has `basis ≥1` (layer-typed) | `basis_missing` |
+| SINV-3 | every record has `basis ≥1`; basis target kinds allowed per layer (§12.1) | `basis_missing` |
 | SINV-4 | every ref resolves (state ids exist; artifact ids exist; provenance copies byte-equal state content) | `basis_unresolvable` |
 | SINV-5 | `based_on` DAG acyclic; roots carry provenance ≥1 (transitive closure) | `provenance_incomplete` |
-| SINV-6 | no unsupported semantic upgrades: hosting matrix respected (§14.3); forced-confidence map exact; evidence classes never upgrade | `epistemic_upgrade` |
+| SINV-6 | no unsupported semantic upgrades: hosting matrix respected (§14.3); forced-confidence map exact; evidence classes never upgrade (checked by re-deriving each record's class from intake per the §6–§10 rule tables and comparing) | `epistemic_upgrade` |
 | SINV-7 | epistemic separation: no forbidden vocabulary (§2.1); statuses ∈ allowed sets; candidate invariants not phrased as verdicts (banned-predicate scan) | `epistemic_leak` |
 | SINV-8 | target attribution: every record traces to ≥1 state entity | `unattributed` |
-| SINV-9 | UNKNOWN discipline: every `unknown` field has an `UnknownIndexEntry`; no defaulting of unknown → concrete | `unknown_flattened` |
+| SINV-9 | UNKNOWN discipline: every `unknown` field has an `UnknownIndexEntry`; every no-record failure branch has an entry except explicitly proved-empty sets (B1/B5); no defaulting of unknown → concrete | `unknown_flattened` |
 | SINV-10 | determinism: recomputed `semantic_hash` matches; no ISO-timestamp/absolute-path/backslash leakage in artifact | `hash_mismatch` / `leakage` |
 | SINV-11 | binding: `input.state_output_hash === computeOutputIdentity(state).output_hash`; `binding.run_id`/`scope_hash` re-derive to current values when provided | `binding_mismatch` |
-| SINV-12 | scope compatibility (only when `scopeReport` present): every state file referenced by semantic records resolves to an entry whose status ∉ {`EXCLUDED`, `NOT_FOUND`, `FAILED`}; no record references excluded paths | `scope_conflict` |
+| SINV-12 | scope compatibility (only when `scopeReport` present): every state file referenced by semantic records resolves to an entry whose status ∉ {`EXCLUDED`, `NOT_FOUND`, `FAILED`}; no record references excluded paths; references to `UNRESOLVED`/`UNSUPPORTED` entries require a degradation note in `input.degradation` | `scope_conflict` |
 | SINV-13 | fidelity honesty: `input.fidelity === 'syntactic'` ⇒ model status `PARTIAL` and degradation notes present; dropped-file/assembly unknowns present when issues exist | `fidelity_mismatch` |
 | SINV-14 | failure envelope: `FAILED` ⇒ all layer arrays empty + failure present; `COMPLETE` ⇒ no degradation; `PARTIAL` ⇒ ≥1 degradation/unknown | `envelope_invalid` |
 
@@ -661,12 +673,12 @@ re-derives the scope report; semantic derivation may run without a scope report
 | `vault` (reuse `fixtures/solidity/vault`) | assets↔shares, custody, ERC4626-like in-scope interfaces, authority of admin | in-scope interfaces classify; out-of-scope hints stay unknown |
 | `lending` | debt↔collateral, fees split, pauser role | debt/collateral require paired access; naming traps fail closed |
 | `staking` | rewards↔eligible stake, receipt representations, keeper/relayer | reward classification only via pinned signature sets |
-| `amm` | reserves↔LP, router dependency (out-of-scope) | router recognized only as unresolved target → `unknown` type + unknown entries |
+| `amm` | reserves↔LP, router dependency (out-of-scope) | named out-of-scope router ⇒ dependency record with type `unknown` + unknown entries; unresolved target ⇒ no record + unknown entry |
 | `oracle-dependent` | oracle capability (observed reads), freshness assumption (OPEN), push-style consumed capability | trust assumption always present (F4); failure semantics stay unknown |
 | `upgradeable-proxy` | delegatecall effects, implementation/upgrader authority, INITIALIZES-class evidence | proxy kind requires E2; no proxy claim from naming |
 | `role-based` | in-scope role interfaces, governance/multisig typing (E2 only), gated state writes | `onlyOwner`-named modifier without in-scope backing ⇒ `authority_kind: 'unknown'` |
 | `callback-token` | consumed capabilities (hooks/receivers), token movements | no movement records without resolved + classified asset |
-| `ambiguous` (adversarial) | vars named `collateral`/`treasury`, modifier `onlyOwner` w/o owner storage, event `Transfer` w/o token surface, function `mint` w/o supply effect | **zero** classified assets/authorities beyond E1/E2; unknown index populated; word count of non-unknown classifications asserted |
+| `ambiguous` (adversarial) | vars named `collateral`/`treasury`, modifier `onlyOwner` w/o owner storage, `oracle`-named reads w/o in-scope oracle interface, admin-style setters (`setAdmin`) w/o in-scope role interface, event `Transfer` w/o token surface, function `mint` w/o supply effect | **zero** classified assets/authorities beyond E1/E2; unknown index populated; word count of non-unknown classifications asserted |
 
 ### 16.2 Test layers (gates)
 
@@ -680,13 +692,15 @@ re-derives the scope report; semantic derivation may run without a scope report
    timestamp, no absolute path, no timestamp-shaped key, no backslash).
    Unlike Phase 3, fixtures are in-process built states (no filesystem walk);
    root independence of `semantic_hash` follows from §13.3 (OD-3).
+   Isolated fidelity-degradation golden states (syntactic fallback, dropped
+   file, assembly-bearing) cover B6/SINV-13 at golden level.
 4. **Import gate** over `src/semantic/**` (Phase 3 pattern).
 5. **Docs phrase gate** over `docs/phase-4-ssem.md`: required honesty sentence
    ("structural function summaries … not symbolic execution"), the four-way
    distinction terms, forbidden vocabulary absent (§2.1), candidate ≠ confirmed
    phrasing pinned.
 6. **Foundation-untouched gate**: `git diff` per task restricted to the §4.4
-   budget (Phase 3 regression-gate convention, `scope-accounting-spec.md:604-610`).
+   budget (Phase 3 regression-gate convention, `scope-accounting-spec.md:596-599`).
 
 Evaluation is **fidelity-based only**: goldens measure whether the model
 faithfully represents evidenced structure — never whether it "found issues".
@@ -722,7 +736,9 @@ artifact content, documented as such).
    landed); all rulings ledgered before workspace cleanup.
 6. Zero LLM/network/dynamic-import/eval references anywhere in `src/semantic/**`.
 7. Re-run determinism: two full runs on two clean checkouts produce identical
-   `semantic_hash` for all corpora.
+   `semantic_hash` for all corpora (pinned `config.projectName`/`config.timestamp`,
+   or identical checkout directory basename and commit — `output_hash` embeds
+   `project.name` and the resolved timestamp).
 
 ## 19. Non-goals (explicit)
 
@@ -769,4 +785,4 @@ stop-on-spec-conflict remains in force for every task.
 | OD-5 | Candidate-invariant home (artifact now vs future ReconState collection) | **Artifact; revisit with OD-2** | new ReconState collection = schema expansion + version questions | §5.3, §14.3 |
 | OD-6 | Evidence threshold for E2 (pinned in-scope signature sets vs allowing out-of-scope selector recognition) | **In-scope compiled evidence only; out-of-scope selector recognition stays E3** | selector-only recognition of OZ-style external deps would reintroduce name/ABI heuristics at scale; cost: more `unknown`s, honestly | §2.3, §7 |
 | OD-7 | `analyzeProjectSemantic` failure envelope (non-fatal FAILED vs throw) | **Non-fatal envelope** (deterministic `{code, stage}`, no messages) | analysis succeeded; killing the run would discard valid state; loudness preserved via mandatory status checks | §4.3, SINV-14 |
-| OD-8 | Extended classification pin lists (exact signature subsets for §7 C3 and E6 beyond the frozen ERC20 set in C2) | **Pin at plan time from corpus ABI evidence; spec freezes rule shape and the ERC20 set now** | exact 4-byte sets are implementation detail of E2 predicates; freezing wrong lists pre-corpus would force spec churn | §7 |
+| OD-8 | Extended classification pin lists (exact signature subsets for §7 C3, §9 E6 role kinds incl. owner/admin, and §10 F1 dependency kinds beyond the frozen ERC20 set in C2; unpinned ⇒ `'unknown'`) | **Pin at plan time from corpus ABI evidence; spec freezes rule shape and the ERC20 set now** | exact 4-byte sets are implementation detail of E2 predicates; freezing wrong lists pre-corpus would force spec churn | §7, §9, §10 |
