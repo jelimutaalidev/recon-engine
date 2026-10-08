@@ -9,6 +9,7 @@ import type { AnalysisResult } from '../../src/recon/index.js';
 import type { ReconIssue } from '../../src/recon/issues.js';
 import { createReconState } from '../../src/recon-state/state.js';
 import type { ReconState } from '../../src/recon-state/schema.js';
+import type { ScopeReport } from '../../src/scope/model.js';
 import { analyzeProjectSemantic } from '../../src/semantic/analyze.js';
 import * as transitionsModule from '../../src/semantic/transitions.js';
 import * as validateModule from '../../src/semantic/validate.js';
@@ -123,15 +124,21 @@ describe('analyzeProjectSemantic — happy path (vault fixture, no scope)', () =
     expect(() => validateSemanticModel(semantic, { state })).not.toThrow();
   });
 
-  it('is read-only: stableStringify(analysis.state) identical before/after', async () => {
+  it('is read-only: full AnalysisResult bytes identical before/after, same reference returned', async () => {
     const state = vaultState();
-    const before = stableStringify(analysis_state(state));
+    const issues: ReconIssue[] = [
+      { severity: 'RECOVERABLE', code: 'note', message: 'read-only probe', file: 'src/Vault.sol' },
+    ];
+    const input = fakeAnalysis(state, { issues });
+    const before = stableStringify(input);
+    const stateBefore = stableStringify(state);
     const config = dummyConfig();
     const { analysis } = await analyzeProjectSemantic(config, {}, {
-      analyze: async () => fakeAnalysis(state),
+      analyze: async () => input,
     });
-    expect(stableStringify(analysis.state)).toBe(before);
-    function analysis_state(s: ReconState): ReconState { return s; }
+    expect(analysis).toBe(input);
+    expect(stableStringify(analysis)).toBe(before);
+    expect(stableStringify(state)).toBe(stateBefore);
   });
 
   it('double-run byte-identity: same inputs yield same semantic bytes and hash', async () => {
@@ -302,12 +309,19 @@ describe('analyzeProjectSemantic — PARTIAL mapping (SINV-13/14)', () => {
   });
 });
 
-describe('analyzeProjectSemantic — scope conflict integration (SINV-12, stage validate)', () => {
-  it('EXCLUDED file reference fails SINV-12 scope_conflict', () => {
+describe('analyzeProjectSemantic — scope-conflict halves (SINV-12 direct check + validate-stage envelope mapping)', () => {
+  // Brief-deviation note: EXCLUDED-via-withScope end-to-end is unreachable by
+  // analysis-precedence construction — analyzeProjectScoped validates the scope
+  // report against state (src/scope/analyze.ts:116-118) before returning, and
+  // validateScopeReportWithState rejects any provenance-cited file lacking an
+  // ANALYZED/UNRESOLVED entry (src/scope/validate.ts:346-359), so the wrapper
+  // rethrows InvalidScopeReport per OD-7 before the semantic pass ever runs
+  // (see withScope rethrow test above). Covered instead in two halves: (1) the
+  // validator rejects an EXCLUDED reference with scope_conflict; (2) a
+  // validate-stage throw maps to a FAILED envelope with stage 'validate'.
+  it('validator rejects EXCLUDED file reference with scope_conflict', async () => {
     const state = vaultState();
-    const outputHash = computeOutputIdentity(state).output_hash;
-    void outputHash;
-    const scopeReport: any = {
+    const scopeReport: ScopeReport = {
       schema_version: 'scope-report/v1',
       run: null,
       run_status: 'FAILED',
@@ -325,20 +339,16 @@ describe('analyzeProjectSemantic — scope conflict integration (SINV-12, stage 
       },
       scope_hash: 'a'.repeat(64),
     };
-    const { semantic } = { semantic: null as never };
-    void semantic;
-    // Build a COMPLETE semantic via wrapper without scope, then validate with conflicting report
-    return analyzeProjectSemantic(dummyConfig(), {}, {
+    const { semantic: model } = await analyzeProjectSemantic(dummyConfig(), {}, {
       analyze: async () => fakeAnalysis(state),
-    }).then(({ semantic: model }) => {
-      let reason: unknown;
-      try {
-        validateSemanticModel(model, { state, scopeReport });
-      } catch (error) {
-        reason = (error as ReconError).details.reason;
-      }
-      expect(reason).toBe('scope_conflict');
     });
+    let reason: unknown;
+    try {
+      validateSemanticModel(model, { state, scopeReport });
+    } catch (error) {
+      reason = (error as ReconError).details.reason;
+    }
+    expect(reason).toBe('scope_conflict');
   });
 
   it('validate-stage throw maps to FAILED envelope with stage validate', async () => {

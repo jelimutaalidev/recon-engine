@@ -118,6 +118,7 @@ export async function analyzeProjectSemantic(
         dependencies: trust.dependencies,
         capabilities: trust.capabilities,
         assumptions: trust.assumptions,
+        // Layer F exposes no observations (frozen) — do not synthesize any here; Task 13 owns the gap.
         observations: [],
       },
     });
