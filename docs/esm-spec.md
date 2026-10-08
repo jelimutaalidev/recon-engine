@@ -163,8 +163,9 @@ Assembly region: `assembly-skipped`. Out-of-scope: `out-of-scope`.
 Bound hit: `bound-hit`. Revisit: `cyclic`. (Existing SSEM reasons
 `no_evidence`, `unresolved_call`, `unsupported_assembly`,
 `out_of_scope_target`, `syntactic_fidelity`, `dropped_file` reused where
-they fit; the twelve ESM-only tokens listed above are PROPOSED and need
-validator-spec approval before enforcement — see §18.)
+they fit; the twelve ESM-only tokens listed above are frozen as
+written (new tokens need validator-spec approval before enforcement
+— see §18.)
 
 **5.7 Provenance requirements.** Every edge carries `basis ≥1` of real
 intake ids (relationship/fact ids + spans); provenance copied
@@ -340,8 +341,9 @@ the route honestly; syntactic inputs yield shorter/UNKNOWN-annotated
 routes, never invented hops.
 
 **7.10 Composition behavior.** Paths are BUILT by §12 (not inputs to
-it); path enumeration itself bounded (max routes per query — value
-deferred, see §21).
+it); path enumeration itself bounded (max 128 routes per
+query-anchor — frozen, see §21.4; overflow yields explicit
+truncated-routes UNKNOWN, never silent), never invented hops.
 
 **7.11 SSEM consumer/boundary.** No current SSEM consumer (explicit —
 not a gap to fill silently). Future impact attribution may consume
@@ -530,8 +532,14 @@ no placeholder is manufactured. (Asymmetry with §6 is deliberate
 and consistent: gate-inventory states completeness over examined
 fields, while temporal sources are existential claims requiring
 occurrence evidence.) If granularity is insufficient to name the
-builtin, kind is UNKNOWN with examined basis (never guessed from
-surrounding code).
+builtin — including the normal case, where the occurrence record
+carries file+line provenance but names only a builtin class (the
+expected shape per `src/recon/ir/build.ts:301`, where builtin names
+are dropped) — kind is UNKNOWN-kind with examined basis (never
+guessed from surrounding code). The class label MAY appear in
+basis/provenance text but MUST NEVER appear as the kind value.
+Source text MUST NOT be read to recover the builtin name (decision
+21.1).
 
 **11.4 Allowed claims.** Occurrence + consumer list. Period.
 
@@ -613,10 +621,12 @@ lineage semantics):
   downstream — SSEM MUST treat it as capability-level. Lineage
   appends `(callback-reentry, outward-call id, entry id)`;
   provenance = both evidences.
-Bound: fixed maximum traversal depth (VALUE UNRESOLVED — see §21;
-candidate: small fixed constant chosen by corpus-measured call-depth
-distribution; selection criteria recorded here, number NOT chosen).
+Bound: fixed maximum traversal depth **8** (frozen: corpus-measured
+max depth 2 over 9 corpora / 78 functions, p99 2, zero truncation at
+8; 4× observed max with headroom for realistic 3–5-hop patterns;
+fixed constant + explicit widening preserve determinism; see §21.3).
 Cycle behavior: visited-set over `(function id, context-hash)` —
+where context-hash is the context record's own content id per §8.8 —
 revisit terminates the branch with a `cyclic` marker. Widening:
 bound-hit or cycle yields explicit UNKNOWN records scoped to the cut
 branch (never silent drop, never partial claim presented as whole).
@@ -681,7 +691,7 @@ reason (closed taxonomy below), basis (examined intake ids, ≥1),
 provenance}`. UNKNOWN is data, not absence: it is counted, sorted,
 hashed, and validated like any record.
 
-**13.2 Reason taxonomy (PROPOSED — new tokens need validator-spec
+**13.2 Reason taxonomy (frozen token list; new tokens need validator-spec
 approval before enforcement, see §18).** Reused SSEM reasons where
 they fit: `no_evidence`, `unresolved_call`,
 `unsupported_assembly`, `out_of_scope_target`, `syntactic_fidelity`,
@@ -716,7 +726,7 @@ id]` — instead of either dropping the branch silently or claiming
 "failures are handled". The unknown is counted in `counts` and hashed
 into the artifact: ignorance with a receipt.
 
-## 14. Artifact schema / envelope (PROPOSED — new, additive only)
+## 14. Artifact schema / envelope (frozen — new, additive only)
 
 The ESM artifact is a SEPARATE artifact (approach A retained from
 brainstorming; SSEM envelope `semantic-model/v1` untouched — frozen).
@@ -729,11 +739,11 @@ NONE at ESM level — ESM output has no COMPLETE/PARTIAL/FAILED notion;
 completeness-like questions are degradation echoes + unknown counts,
 never a verdict (validation PASS ≠ completeness doctrine extends
 here). All arrays id-sorted; all records schema-validated at build.
-Record id family (PROPOSED — needs approval per §21.6): `seme:` prefix
+Record id family (frozen per §21.6 approval): `seme:` prefix
 with kind bound in the content-id payload (mirroring the
 `semanticContentId(prefix, payload)` idiom); coexistence with the
-frozen `sem*:` families is a convention decision with validator
-impact, NOT decided here.
+frozen `sem*:` families is decided as convention (ladder `based_on`
+integration itself remains STOP per §19.5).
 
 ## 15. Canonical serialization, ordering, semantic hash
 
@@ -819,9 +829,10 @@ promotion.
 **19.5 Frozen integration points (explicit STOPs, not decisions).**
 (a) Ladder `based_on` patterns admitting ESM refs = frozen
 `model.ts` change. (b) New SINV-family reasons = spec + validator
-change. (c) ESM id family (`seme:` PROPOSED, §14) coexisting with
-`sem*:` = convention decision with validator impact. None are
-resolved by this draft.
+change. (c) ESM id family decided as `seme:` (§14); ladder `based_on`
+integration remains STOP. Only (c)-family is resolved by freeze; (a),
+(b), roll-up (§19.4), and remaining §21 items stay STOP/deferred as
+marked.
 
 ## 20. R1–R9 traceability matrix
 
@@ -833,7 +844,7 @@ resolved by this draft.
 | R4 Temporal Sources | §11 (occurrence + consumers, causal forbidden) | Specified as occurrence-only |
 | R5 Economic Transition Semantics | §5.4 endpoints (location pairs), §5.13 scaffolding boundary, §12 call-inline | Specified as located-transition scaffolding ONLY: amounts/identity/deltas forbidden; scaffolding ≠ movement ≠ exploit; Value entity stays removed |
 | R6 Cross-Boundary Influence | §10 (boundary facts, return/result UNKNOWN) | Specified; return linkage permanently UNKNOWN on current evidence |
-| R7 Semantic Composition | §12 (5 operators + bound + widening + cycles) | Specified; bound VALUE unresolved (§21.4) |
+| R7 Semantic Composition | §12 (5 operators + bound 8 + widening + cycles) | Specified; path cap 128 (§7.10, §21.4 frozen) |
 | R8 State Identity & Memory Semantics | §9 (variable granularity, anti-alias rule) | Specified; sub-path/memory permanently UNKNOWN on current evidence |
 | R9 Evidence-Preserving Semantics | §3, §13, §16, §17 | Specified end-to-end |
 
@@ -841,10 +852,10 @@ resolved by this draft.
 
 1. **Structural source reader exception:** DEFAULT NO (IR-only strict). Allowing even a bounded source-text reader is an explicit exception to the no-second-parser frozen rule. Recommend AGAINST unless R2-partial proves insufficient in a pilot.
 2. **Temporal scope final:** DEFAULT `block.*` flagged builtins only; `msg.*` builtins excluded (actor-adjacent → context-UNKNOWN). Final list needs corpus evidence.
-3. **Composition bound value:** UNRESOLVED. Candidate: small fixed constant; selection MUST be justified by corpus-measured call-depth distribution + determinism argument. Number deliberately not chosen here.
-4. **Path enumeration bound:** UNRESOLVED (same treatment as 3; route-count cap per query).
-5. **New SINV family + §13.2 reason tokens:** EXPLICIT SPEC CHANGE — STOP (see §18).
-6. **Id family (`seme:` PROPOSED) + ladder `based_on` integration:** EXPLICIT SPEC CHANGE involving frozen `model.ts` — STOP (see §19.5).
+3. **Composition bound value:** **8** (frozen: corpus-measured max depth 2 over 9 corpora / 78 functions, p99 2, zero truncation at 8; 4× observed max with headroom for realistic 3–5-hop patterns; fixed constant + explicit widening preserve determinism).
+4. **Path enumeration bound:** **128 routes per query-anchor** (frozen: corpus-wide simple routes order ~10², per-anchor single digits; >10× headroom; overflow yields explicit truncated-routes UNKNOWN, never silent).
+5. **New SINV family:** EXPLICIT SPEC CHANGE — STOP (see §18). The §13.2 reason-token strings themselves are frozen as written; only family/enforcement stays STOP.
+6. **Id family: `seme:` DECIDED (family only).** Ladder `based_on` integration: EXPLICIT SPEC CHANGE involving frozen `model.ts` — STOP (see §19.5).
 7. **Unknown roll-up rule (§19.4 PROPOSED):** needs approval before any SSEM code cites ESM unknowns.
 8. **ESM status/completeness notion:** DEFAULT NONE (§14) — any future PARTIAL-like notion is a spec decision, not an implementation convenience.
 
