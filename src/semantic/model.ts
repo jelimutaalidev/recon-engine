@@ -33,6 +33,23 @@ export const SEMANTIC_STAGES = [
 ] as const;
 export type SemanticStage = (typeof SEMANTIC_STAGES)[number];
 
+export type SinvReason =
+  | 'schema'
+  | 'ids_unsorted'
+  | 'basis_missing'
+  | 'basis_unresolvable'
+  | 'provenance_incomplete'
+  | 'epistemic_upgrade'
+  | 'epistemic_leak'
+  | 'unattributed'
+  | 'unknown_flattened'
+  | 'hash_mismatch'
+  | 'leakage'
+  | 'binding_mismatch'
+  | 'scope_conflict'
+  | 'fidelity_mismatch'
+  | 'envelope_invalid';
+
 export const INVARIANT_STATUSES = ['OPEN', 'SUPPORTED', 'WEAKENED', 'REJECTED'] as const;
 export type InvariantStatus = (typeof INVARIANT_STATUSES)[number];
 export const invariantStatusSchema = z.enum(INVARIANT_STATUSES);
