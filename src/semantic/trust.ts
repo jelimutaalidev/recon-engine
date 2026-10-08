@@ -46,6 +46,7 @@ interface DependencyDraft {
 }
 
 interface CapabilityDraft {
+  depKey: string;
   dependencyRef: string;
   direction: 'observed' | 'consumed' | 'unknown';
   capabilities: Set<string>;
@@ -188,6 +189,7 @@ export function deriveTrust(
           let capDraft = capabilityDrafts.get(capKey);
           if (!capDraft) {
             capDraft = {
+              depKey,
               dependencyRef: '',
               direction: 'observed',
               capabilities: new Set([targetFn.signature]),
@@ -229,6 +231,7 @@ export function deriveTrust(
         let capDraft = capabilityDrafts.get(capKey);
         if (!capDraft) {
           capDraft = {
+            depKey,
             dependencyRef: '',
             direction: 'observed',
             capabilities: new Set([`statevar:${depName}`]),
@@ -297,6 +300,7 @@ export function deriveTrust(
     let capDraft = capabilityDrafts.get(capKey);
     if (!capDraft) {
       capDraft = {
+        depKey,
         dependencyRef: '',
         direction,
         capabilities: new Set([fn.signature]),
@@ -344,9 +348,8 @@ export function deriveTrust(
     dependencies.push(dependency);
   }
 
-  for (const [capKey, draft] of capabilityDrafts.entries()) {
-    const depKey = capKey.split(':').slice(0, -1).join(':');
-    const dependencyRef = dependencyIdMap.get(depKey);
+  for (const draft of capabilityDrafts.values()) {
+    const dependencyRef = dependencyIdMap.get(draft.depKey);
     if (dependencyRef) {
       draft.dependencyRef = dependencyRef;
     }

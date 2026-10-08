@@ -164,7 +164,10 @@ export async function analyzeProjectSemantic(
       authority: authority.authority,
       trust: { dependencies: trust.dependencies, capabilities: trust.capabilities },
       epistemic: {
-        observations: ladder.observations,
+        // Layer-F observations are artifact records: trust assumptions cite
+        // them via based_on, so they must be emitted (SINV-4), mirroring the
+        // golden harness runGolden.
+        observations: [...ladder.observations, ...trust.observations],
         assumptions: ladder.assumptions,
         hypotheses: ladder.hypotheses,
         invariants: ladder.invariants,
