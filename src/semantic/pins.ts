@@ -120,3 +120,22 @@ export const RELAYER_PINS: readonly string[] = [
 
 // No corpus evidence for these role kinds — intentionally omitted per OD-8:
 // DEFAULT_ADMIN_PINS, GUARDIAN_PINS, MULTISIG_PINS, TIMELOCK_PINS
+
+// OD-8 F1 dependency pins: derived ONLY from fixtures/solidity/semantics/{oracle,amm} corpus.
+// Omitted kinds (no corpus evidence): BRIDGE_PINS, MESSENGER_PINS.
+
+// Oracle dependency: IPriceOracle interface (oracle/IPriceOracle.sol) declares the
+// read surface consumed by PriceConsumer.
+export const ORACLE_PINS: readonly string[] = [
+  // OD-8: derived from fixtures/solidity/semantics/oracle ABI, oracle surface
+  'latestPrice(address)',
+  // OD-8: derived from fixtures/solidity/semantics/oracle ABI, oracle surface
+  'latestTimestamp(address)',
+];
+
+// DEX dependency: IRouter interface (amm/router/IRouter.sol) declares the swap
+// surface consumed by AMMPair.
+export const DEX_PINS: readonly string[] = [
+  // OD-8: derived from fixtures/solidity/semantics/amm ABI, DEX surface
+  'swapExactTokensForTokens(uint256,uint256,address[],address,uint256)',
+];

@@ -17,6 +17,8 @@ import {
   PAUSER_PINS,
   KEEPER_PINS,
   RELAYER_PINS,
+  ORACLE_PINS,
+  DEX_PINS,
 } from '../../src/semantic/pins.js';
 
 // OD-8 (spec §18): pins are grounded ONLY in corpus ABI evidence observed via
@@ -132,6 +134,9 @@ const PIN_LISTS: readonly PinListBinding[] = [
   { listName: 'PAUSER_PINS', pins: PAUSER_PINS },
   { listName: 'KEEPER_PINS', pins: KEEPER_PINS },
   { listName: 'RELAYER_PINS', pins: RELAYER_PINS },
+  // Task 8 (OD-8 F1) extension: dependency pin lists from oracle + amm corpus.
+  { listName: 'ORACLE_PINS', pins: ORACLE_PINS },
+  { listName: 'DEX_PINS', pins: DEX_PINS },
 ];
 
 const PINS_MODULE_PATH = fileURLToPath(new URL('../../src/semantic/pins.ts', import.meta.url));
