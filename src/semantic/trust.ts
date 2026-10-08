@@ -19,6 +19,13 @@ import { ORACLE_PINS, DEX_PINS } from './pins.js';
 import { DEPENDENCY_TYPES } from '../domain/enums.js';
 import type { Provenance } from '../epistemic/provenance.js';
 
+export interface TrustDerivation {
+  dependencies: ExternalDependency[];
+  capabilities: TrustCapability[];
+  assumptions: SemanticAssumption[];
+  unknowns: UnknownIndexEntry[];
+}
+
 type DependencyType = (typeof DEPENDENCY_TYPES)[number];
 type UnknownReason = UnknownIndexEntry['reason'];
 
