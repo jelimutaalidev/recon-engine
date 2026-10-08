@@ -23,6 +23,7 @@ export interface TrustDerivation {
   dependencies: ExternalDependency[];
   capabilities: TrustCapability[];
   assumptions: SemanticAssumption[];
+  observations: SemanticObservation[];
   unknowns: UnknownIndexEntry[];
 }
 
@@ -111,6 +112,7 @@ export function deriveTrust(
   dependencies: ExternalDependency[];
   capabilities: TrustCapability[];
   assumptions: SemanticAssumption[];
+  observations: SemanticObservation[];
   unknowns: UnknownIndexEntry[];
 } {
   const dependencyDrafts = new Map<string, DependencyDraft>();
@@ -118,7 +120,7 @@ export function deriveTrust(
   const assumptionDrafts: AssumptionDraft[] = [];
   const unknownDrafts: UnknownDraft[] = [];
 
-  const transitionMap = new Map(transitions.map((t) => [t.function_id, t]));
+  const transitionMap = new Map(transitions.map((t) => [t.id, t]));
 
   for (const transition of transitions) {
     const fn = index.functionsById.get(transition.function_id);
@@ -529,6 +531,7 @@ export function deriveTrust(
   dependencies.sort((a, b) => compareCodeUnits(a.id, b.id));
   capabilities.sort((a, b) => compareCodeUnits(a.id, b.id));
   assumptions.sort((a, b) => compareCodeUnits(a.id, b.id));
+  observations.sort((a, b) => compareCodeUnits(a.id, b.id));
 
-  return { dependencies, capabilities, assumptions, unknowns };
+  return { dependencies, capabilities, assumptions, observations, unknowns };
 }

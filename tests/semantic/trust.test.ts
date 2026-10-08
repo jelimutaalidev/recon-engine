@@ -8,7 +8,14 @@ import type { ProvenanceInput } from '../../src/epistemic/provenance.js';
 import type { ReconIssue } from '../../src/recon/issues.js';
 import { createRelationship, type Relationship } from '../../src/relationships/relationship.js';
 import { createReconState } from '../../src/recon-state/state.js';
-import { buildEvidenceIndex, type EvidenceIndex } from '../../src/semantic/evidence.js';
+import { computeOutputIdentity } from '../../src/traceability/identities.js';
+import { buildEvidenceIndex, resolveProvenanceCopy, type EvidenceIndex } from '../../src/semantic/evidence.js';
+import { deriveAccounting } from '../../src/semantic/accounting.js';
+import { deriveAuthority } from '../../src/semantic/authority.js';
+import { deriveAssets } from '../../src/semantic/custody.js';
+import { deriveLadder } from '../../src/semantic/ladder.js';
+import { finalizeSemanticModel } from '../../src/semantic/report.js';
+import { validateSemanticModel } from '../../src/semantic/validate.js';
 import { deriveTransitions, type TransitionDerivation } from '../../src/semantic/transitions.js';
 import {
   ExternalDependencySchema,
@@ -700,6 +707,126 @@ describe('deriveTrust (spec §10 rules F1–F5)', () => {
 
       const unkIds = result.unknowns.map((u) => u.record_ref + u.field + u.reason);
       expect(unkIds).toEqual([...unkIds].sort());
+    });
+  });
+
+  describe('Layer-F observations are emitted and assumption based_on resolves (Task 13 adjudication fix)', () => {
+    it('deriveTrust returns observations; every assumption cites an emitted observation', () => {
+      const state = miniState();
+      const consumer = state.contract('Consumer');
+      const oracle = state.contract('Oracle', 'oracle');
+      const readPrice = state.fn(consumer, 'readPrice', { source: 'Consumer.sol:10-20' });
+      const latestPrice = state.fn(oracle, 'latestPrice', {
+        source: 'Oracle.sol:1-10',
+        parameters: [{ name: 'asset', type: 'address' }],
+      });
+      const price = state.stateVar(oracle, 'price', 'uint256');
+      state.rel('CALLS', readPrice.id, latestPrice.id, [sourceSpan('Consumer.sol', 12)], {
+        call_kind: 'external',
+      });
+      state.rel('READS', latestPrice.id, price.id, [sourceSpan('Oracle.sol', 4)]);
+      state.emit(readPrice, 'PriceRead(address)', [sourceSpan('Consumer.sol', 14)]);
+
+      const index = state.buildIndex();
+      const transitions = deriveTransitions(index);
+      const result = deriveTrust(index, transitions.transitions);
+      expectParseableTrust(result);
+
+      expect(result.capabilities.length).toBeGreaterThan(0);
+      expect(result.observations.length).toBe(result.capabilities.length);
+      const emittedObsIds = new Set(result.observations.map((obs) => obs.id));
+      for (const cap of result.capabilities) {
+        const asm = result.assumptions.find((candidate) => candidate.id === cap.trust_assumption_ref);
+        expect(asm).toBeDefined();
+        expect(asm!.based_on.length).toBeGreaterThanOrEqual(1);
+        for (const ref of asm!.based_on) {
+          expect(emittedObsIds.has(ref)).toBe(true);
+        }
+      }
+      // Observation provenance is byte-equal to state evidence (registry or embedded).
+      for (const obs of result.observations) {
+        for (const prov of obs.provenance) {
+          expect(resolveProvenanceCopy(index, prov)).toBe(true);
+        }
+      }
+    });
+
+    it('full pipeline with Layer-F observations threaded validates end to end', () => {
+      const state = miniState();
+      const consumer = state.contract('Consumer');
+      const oracle = state.contract('Oracle', 'oracle');
+      const readPrice = state.fn(consumer, 'readPrice', { source: 'Consumer.sol:10-20' });
+      const latestPrice = state.fn(oracle, 'latestPrice', {
+        source: 'Oracle.sol:1-10',
+        parameters: [{ name: 'asset', type: 'address' }],
+      });
+      const price = state.stateVar(oracle, 'price', 'uint256');
+      state.rel('CALLS', readPrice.id, latestPrice.id, [sourceSpan('Consumer.sol', 12)], {
+        call_kind: 'external',
+      });
+      state.rel('READS', latestPrice.id, price.id, [sourceSpan('Oracle.sol', 4)]);
+      state.emit(readPrice, 'PriceRead(address)', [sourceSpan('Consumer.sol', 14)]);
+
+      const index = state.buildIndex();
+      const transitions = deriveTransitions(index);
+      const assets = deriveAssets(index);
+      const accounting = deriveAccounting(index, { assets: assets.assets });
+      const authority = deriveAuthority(index, transitions.transitions);
+      const trust = deriveTrust(index, transitions.transitions);
+      const ladder = deriveLadder(index, {
+        transitions: transitions.transitions,
+        assets: assets.assets,
+        custody: assets.custody,
+        claims: assets.claims,
+        accounting: accounting.accounting,
+        authority: authority.authority,
+        trust: {
+          dependencies: trust.dependencies,
+          capabilities: trust.capabilities,
+          assumptions: trust.assumptions,
+          observations: trust.observations,
+        },
+      });
+      const unknowns = [
+        ...transitions.unknowns,
+        ...assets.unknowns,
+        ...accounting.unknowns,
+        ...authority.unknowns,
+        ...trust.unknowns,
+        ...ladder.unknowns,
+      ];
+      const finalized = finalizeSemanticModel({
+        schema_version: 'semantic-model/v1',
+        status: 'COMPLETE',
+        input: {
+          fidelity: index.input.meta.fidelity,
+          state_output_hash: index.stateHash,
+          file_count: index.input.meta.fileCount,
+        },
+        binding: {},
+        contracts: [],
+        transitions: transitions.transitions,
+        assets: assets.assets,
+        custody: assets.custody,
+        claims: assets.claims,
+        accounting: accounting.accounting,
+        authority: authority.authority,
+        trust: { dependencies: trust.dependencies, capabilities: trust.capabilities },
+        epistemic: {
+          observations: [...ladder.observations, ...trust.observations],
+          assumptions: ladder.assumptions,
+          hypotheses: ladder.hypotheses,
+          invariants: ladder.invariants,
+        },
+        unknowns,
+      });
+      expect(finalized.epistemic.observations.length).toBeGreaterThan(0);
+      expect(finalized.epistemic.assumptions.length).toBeGreaterThan(0);
+      expect(() => validateSemanticModel(finalized, { state: index.input.state })).not.toThrow();
+      expect(index.stateHash).toBe(computeOutputIdentity(index.input.state).output_hash);
+      // Re-finalizing the validated model is byte-identical (deterministic hash).
+      const { semantic_hash: _drop, counts: _dropCounts, ...draft } = finalized;
+      expect(finalizeSemanticModel(draft).semantic_hash).toBe(finalized.semantic_hash);
     });
   });
 });

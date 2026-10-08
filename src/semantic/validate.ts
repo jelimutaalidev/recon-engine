@@ -279,7 +279,7 @@ function checkTargetAttribution(model: SemanticModel, state: ReconState): void {
   }
   for (const d of model.trust.dependencies) allRecords.push({ id: d.id, basis: d.basis, type: 'ExternalDependency' });
   for (const cap of model.trust.capabilities) allRecords.push({ id: cap.id, basis: cap.basis, type: 'TrustCapability' });
-  for (const obs of model.epistemic.observations) allRecords.push({ id: obs.id, basis: obs.based_on, type: 'SemanticObservation' });
+  for (const obs of model.epistemic.observations) allRecords.push({ id: obs.id, basis: [...obs.based_on, ...obs.provenance.map((p) => p.id)], type: 'SemanticObservation' });
   for (const asm of model.epistemic.assumptions) allRecords.push({ id: asm.id, basis: asm.based_on, type: 'SemanticAssumption' });
   for (const hyp of model.epistemic.hypotheses) allRecords.push({ id: hyp.id, basis: hyp.based_on, type: 'SemanticHypothesis' });
   for (const inv of model.epistemic.invariants) allRecords.push({ id: inv.id, basis: inv.based_on, type: 'CandidateInvariant' });
@@ -291,7 +291,7 @@ function checkTargetAttribution(model: SemanticModel, state: ReconState): void {
     if (provenanceIds.has(ref)) return true;
     if (artifactIds.has(ref)) {
       const obs = model.epistemic.observations.find((o) => o.id === ref);
-      if (obs) return obs.based_on.some((r) => tracesToStateEntity(r, visited));
+      if (obs) return [...obs.based_on, ...obs.provenance.map((p) => p.id)].some((r) => tracesToStateEntity(r, visited));
       const asm = model.epistemic.assumptions.find((a) => a.id === ref);
       if (asm) return asm.based_on.some((r) => tracesToStateEntity(r, visited));
       const hyp = model.epistemic.hypotheses.find((h) => h.id === ref);
@@ -325,8 +325,12 @@ function checkUnknownDiscipline(model: SemanticModel): void {
   for (const t of model.transitions) {
     for (const effect of t.external_effects) {
       if (effect.target_evidence === 'E3' && !effect.target_ref) {
-        const key = `${t.id}.external_effects.target_ref`;
-        if (!unknownRefs.has(key)) {
+        // Layers B/F record the failure-branch entry under the layer field
+        // name ('external_effects'); the dotted sub-field path is accepted as
+        // an equivalent ledger key. Either entry satisfies SINV-9.
+        const dotted = `${t.id}.external_effects.target_ref`;
+        const layer = `${t.id}.external_effects`;
+        if (!unknownRefs.has(dotted) && !unknownRefs.has(layer)) {
           fail('unknown_flattened', `transition ${t.id} has E3 external effect without target_ref and no UnknownIndexEntry`);
         }
       }

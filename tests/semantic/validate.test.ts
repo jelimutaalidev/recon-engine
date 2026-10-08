@@ -627,6 +627,24 @@ describe('validateSemanticModel — SINV-9 unknown_flattened', () => {
     }
   });
 
+  it('accepts the layer-emitted ledger entry for an E3 effect (field external_effects)', () => {
+    // Layers B/F record the B2 failure-branch entry under the layer field
+    // name (transitions.ts/trust.ts emit field 'external_effects'); the
+    // validator must accept the entry the layers actually emit (Task 13
+    // adjudication: spec-mandated B2 output previously failed SINV-9).
+    const transition = transitionFixture({
+      unknowns: [],
+      external_effects: [{ call_kind: 'lowlevel', target_evidence: 'E3', value_handling: 'nonpayable', basis: [FACT] }],
+    });
+    const transitionId = (transition as Record<string, unknown>).id as string;
+    const model = SemanticModelSchema.parse(populatedModelFixture());
+    model.transitions = [transition];
+    model.unknowns = [{ record_ref: transitionId, field: 'external_effects', reason: 'unresolved_call', basis: [FACT] }];
+    model.counts = { ...model.counts, transitions: 1, unknowns: 1 };
+    const modelWithHash = { ...model, semantic_hash: computeSemanticHashForFixture(model) };
+    expect(() => callValidate(modelWithHash)).not.toThrow();
+  });
+
   it('accepts proved-empty B1/B5 sets (no ledger entry required)', () => {
     const model = SemanticModelSchema.parse(envelopeFixture());
     model.transitions = [transitionFixture({ pre_state_reads: [], writes: [], external_effects: [], basis: [FACT] })];
