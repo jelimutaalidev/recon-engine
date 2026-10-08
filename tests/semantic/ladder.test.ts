@@ -176,7 +176,12 @@ function runFullPipeline(index: EvidenceIndex): {
     claims: assets.claims,
     accounting: accounting.accounting,
     authority: authority.authority,
-    trust: { dependencies: trust.dependencies, capabilities: trust.capabilities },
+    trust: {
+      dependencies: trust.dependencies,
+      capabilities: trust.capabilities,
+      assumptions: trust.assumptions,
+      observations: [],
+    },
   });
   return { transitions, assets, accounting, authority, trust, ladder };
 }

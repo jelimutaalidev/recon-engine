@@ -34,6 +34,8 @@ export interface LadderLayers {
   trust: {
     dependencies: readonly ExternalDependency[];
     capabilities: readonly TrustCapability[];
+    assumptions: readonly SemanticAssumption[];
+    observations: readonly SemanticObservation[];
   };
 }
 
@@ -355,18 +357,24 @@ function buildAssumptions(
     assumptions.push(assumption);
   }
 
-  for (const cap of layers.trust.capabilities) {
-    if (cap.trust_assumption_ref) {
-      const trustAsm = SemanticAssumptionSchema.parse({
-        id: cap.trust_assumption_ref,
-        type: 'ASSUMPTION',
-        statement: `Trust assumption for ${cap.direction} capability on ${cap.dependency_ref}: the external dependency behaves as expected for ${cap.capabilities.join(', ')}`,
-        based_on: [],
-        confidence: { level: 'INFERRED' },
-        status: 'OPEN',
-      });
-      assumptions.push(trustAsm);
-    }
+  for (const trustAsm of layers.trust.assumptions) {
+    const validated = SemanticAssumptionSchema.parse(trustAsm);
+    assumptions.push(validated);
+  }
+
+  for (const trustObs of layers.trust.observations) {
+    const statement = `Security assumption: the behavior observed in ${trustObs.id} holds under operational conditions`;
+    const asmId = semanticContentId('semasm', { statement, based_on: [trustObs.id] });
+
+    const assumption = SemanticAssumptionSchema.parse({
+      id: semanticContentId('semasm', { statement, based_on: [trustObs.id] }),
+      type: 'ASSUMPTION',
+      statement,
+      based_on: [trustObs.id],
+      confidence: { level: 'INFERRED' },
+      status: 'OPEN',
+    });
+    assumptions.push(assumption);
   }
 
   const materialized: UnknownIndexEntry[] = unknownDrafts
