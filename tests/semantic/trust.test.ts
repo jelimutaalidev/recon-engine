@@ -637,6 +637,39 @@ describe('deriveTrust (spec §10 rules F1–F5)', () => {
         }
       }
     });
+
+    it('same-named callback-surface functions in different contracts yield distinct dependency ids', () => {
+      const state = miniState();
+      const first = state.contract('First');
+      const second = state.contract('Second');
+      const firstMove = state.fn(first, 'transfer', {
+        source: 'First.sol:10-16',
+        parameters: [
+          { name: 'to', type: 'address' },
+          { name: 'amount', type: 'uint256' },
+        ],
+      });
+      const secondMove = state.fn(second, 'transfer', {
+        source: 'Second.sol:10-16',
+        parameters: [
+          { name: 'to', type: 'address' },
+          { name: 'amount', type: 'uint256' },
+        ],
+      });
+      const firstLedger = state.stateVar(first, 'ledger', 'uint256');
+      const secondLedger = state.stateVar(second, 'ledger', 'uint256');
+      state.rel('WRITES', firstMove.id, firstLedger.id, [sourceSpan('First.sol', 12)]);
+      state.rel('WRITES', secondMove.id, secondLedger.id, [sourceSpan('Second.sol', 12)]);
+
+      const index = state.buildIndex();
+      const transitions = deriveTransitions(index);
+      const result = deriveTrust(index, transitions.transitions);
+      expectParseableTrust(result);
+
+      expect(result.dependencies).toHaveLength(2);
+      const ids = result.dependencies.map((dep) => dep.id);
+      expect(new Set(ids).size).toBe(ids.length);
+    });
   });
 
   describe('Determinism: no Date.now/Math.random; arrays sorted by id', () => {

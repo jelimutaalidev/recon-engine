@@ -324,7 +324,11 @@ export function deriveTrust(
   const dependencyIdMap = new Map<string, string>();
 
   for (const [depKey, draft] of dependencyDrafts.entries()) {
+    // depKey disambiguates drafts that share a display name (same-named
+    // callback-surface functions in different contracts); the content id
+    // must carry the same disambiguation or distinct drafts collide.
     const depId = semanticContentId('semdep', {
+      dep_key: depKey,
       name: draft.name,
       dependency_type: draft.dependencyType,
     });
