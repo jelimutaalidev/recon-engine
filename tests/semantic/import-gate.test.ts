@@ -37,8 +37,14 @@ const BARREL_MODULES = [
   'analyze',
 ];
 
-function listSourceFiles(dir: string): string[] {
-  const files: string[] = [];
+// `Function(` is matched with an identifier-character lookbehind so that
+// legitimate identifiers ending in `Function` (e.g. `composeFunction(`)
+// pass while standalone constructor calls are still rejected.
+function isForbiddenFunctionCall(source: string): boolean {
+  return /(?<![A-Za-z0-9_$])Function\(/.test(source);
+}
+
+function listSourceFiles(dir: string): string[] {  const files: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = join(dir, entry.name);
     if (entry.isDirectory()) {
@@ -68,7 +74,9 @@ function scanFile(file: string): string[] {
   const violations: string[] = [];
 
   for (const token of FORBIDDEN_SUBSTRINGS) {
-    if (source.includes(token)) violations.push(`${relative}: forbidden token "${token}"`);
+    const hit =
+      token === 'Function(' ? isForbiddenFunctionCall(source) : source.includes(token);
+    if (hit) violations.push(`${relative}: forbidden token "${token}"`);
   }
   if (/\bimport\s*\(/.test(source)) violations.push(`${relative}: dynamic import()`);
 
@@ -86,6 +94,25 @@ function scanFile(file: string): string[] {
 }
 
 describe('static import gate (semantic)', () => {
+  it('Function( token rejects standalone constructor calls but allows identifiers ending in Function', () => {
+    // Standalone / direct constructor spellings stay rejected.
+    expect(isForbiddenFunctionCall('Function(')).toBe(true);
+    expect(isForbiddenFunctionCall('const f = new Function(')).toBe(true);
+    expect(isForbiddenFunctionCall('x.Function(')).toBe(true);
+    expect(isForbiddenFunctionCall('(Function(')).toBe(true);
+    expect(isForbiddenFunctionCall('\n  Function(')).toBe(true);
+    expect(isForbiddenFunctionCall('/* Function( */')).toBe(true);
+    // Legitimate identifiers ending in Function pass (V2 lookbehind).
+    expect(isForbiddenFunctionCall('const c = composeFunction(index, id, parts);')).toBe(false);
+    expect(isForbiddenFunctionCall('createFunction({')).toBe(false);
+    expect(isForbiddenFunctionCall('function buildFunction(node: Ast) {')).toBe(false);
+    expect(isForbiddenFunctionCall('_Function(')).toBe(false);
+    expect(isForbiddenFunctionCall('$Function(')).toBe(false);
+    // Unchanged blind spots shared with the old check (documented, not introduced here).
+    expect(isForbiddenFunctionCall('aFunction (')).toBe(false);
+    expect(isForbiddenFunctionCall('const x = makeEsmUnknown(a, b);')).toBe(false);
+  });
+
   it('static import gate: src/semantic imports only the allowlist', () => {
     const files = listSourceFiles(SRC_SEMANTIC);
     expect(files.length).toBeGreaterThan(0);
