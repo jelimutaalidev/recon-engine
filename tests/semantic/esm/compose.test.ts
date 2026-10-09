@@ -195,8 +195,14 @@ describe('composeFunction ownership preservation', () => {
     const keptB = summary.entries.filter((record) => record.function !== a.id);
     expect(keptB).toEqual(bPart);
 
-    expect(summary.contexts.length).toBe(2);
-    for (const context of summary.contexts) expect(context.entry).toBe(a.id);
+    expect(summary.contexts.length).toBeGreaterThanOrEqual(2);
+    const summaryIds = new Set(summary.contexts.map((context) => context.id));
+    const partIds = new Set(parts.contexts.map((context) => context.id));
+    for (const id of summaryIds) expect(partIds.has(id)).toBe(true);
+    const callerView = summary.contexts.filter((context) => context.entry === a.id);
+    const calleeView = summary.contexts.filter((context) => context.entry === b.id);
+    expect(callerView.length).toBeGreaterThanOrEqual(1);
+    expect(calleeView.length).toBeGreaterThanOrEqual(1);
     const chains = summary.contexts.map((context) => stableStringify(context.chain));
     expect(chains).toContain(stableStringify([a.id]));
     expect(chains).toContain(stableStringify([a.id, b.id]));
@@ -397,13 +403,14 @@ describe('callbackReentry', () => {
     expect(result.unknowns[0]?.basis).toContain('function:B');
   });
 
-  it('WITHOUT an exposed entry yields UNKNOWN, preserves the caller, and never demotes status', () => {
+  it('WITHOUT an exposed entry yields UNKNOWN with no union (pure operator returns empty)', () => {
     const caller = frag([entry('condition', 'seme:acond', 'function:A', 'contract:H')]);
     caller.status = 'reentry-capable';
     const result = callbackReentry(caller, undefined, 'rel:out1');
 
-    expect(result.entries).toEqual(caller.entries);
-    expect(result.entries.length).toBeGreaterThan(0);
+    // Spec §12.1: no union at all — caller entries MUST NOT be returned here.
+    // Traversal preserves the caller side separately (see composeFunction test).
+    expect(result.entries).toEqual([]);
     expect(result.status).toBe('reentry-capable');
     expect(result.unknowns.length).toBe(1);
     expect(result.unknowns[0]?.reason).toBe('no_evidence');

@@ -228,8 +228,11 @@ export function callbackReentry(
   entryId?: string,
 ): CompositionFragment {
   if (entry === undefined || entryId === undefined) {
+    // Spec §12.1: missing outward-call evidence or reentry entry → no union
+    // at all (capability unproven). Pure operator: empty entries, UNKNOWN
+    // only. Traversal preserves the caller side separately (see visit loop).
     return {
-      entries: [...caller.entries],
+      entries: [],
       lineage: [
         ...caller.lineage,
         {
@@ -696,7 +699,17 @@ function composeFunctionInner(
             continue;
           }
           if (fallbackEntry === undefined) {
-            acc = callbackReentry(acc, undefined, call.site);
+            // No exposed entry: capability unproven (§12.1, §12.7). The pure
+            // operator returns no union (empty entries); traversal keeps the
+            // caller side and records the marker (caller preserved, no entry
+            // mixed in, no synthesized records).
+            const marker = callbackReentry(emptyFragment(acc.status), undefined, call.site);
+            acc = {
+              entries: [...acc.entries],
+              lineage: [...acc.lineage, ...marker.lineage],
+              unknowns: dedupeUnknowns([...acc.unknowns, ...marker.unknowns]),
+              status: acc.status,
+            };
           } else {
             acc = callbackReentry(acc, partitionOf(fallbackEntry), call.site, fallbackEntry);
           }
@@ -794,9 +807,17 @@ function composeFunctionInner(
     lineage.push(record);
   }
 
-  const contexts = parts.contexts
-    .filter((context) => context.entry === functionId)
-    .sort((a, b) => compareCodeUnits(a.id, b.id));
+  const contexts = (() => {
+    // Spec §12.7: caller and callee ExecutionContexts recorded SEPARATELY,
+    // never collapsed. Include contexts for the root and every composed owner
+    // (functions contributing entries), using only evidence-backed records
+    // from parts.contexts — never synthesized ids.
+    const owners = new Set<string>([functionId]);
+    for (const record of result.entries) owners.add(record.function);
+    return parts.contexts
+      .filter((context) => owners.has(context.entry))
+      .sort((a, b) => compareCodeUnits(a.id, b.id));
+  })();
 
   const summary = ComposedSummarySchema.parse({
     owner: { function: functionId, contract: root.contract_id },
