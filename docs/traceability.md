@@ -422,6 +422,8 @@ The five classes stay distinct; none may be collapsed:
 | `INCOMPLETE_TRACE` | entity exists but required lineage is unavailable | explicit `TraceStatus` `PARTIAL`/`MISSING` + `findIncompleteTraces()` — reported, never thrown, never silently valid |
 | `FAILED` | derivation operation failed | `DerivationStatus`/`ReconRunStatus` `'FAILED'` values are representable; the pipeline only ever emits `COMPLETED` today (a failed analysis aborts before a state exists) |
 
+Issue identity note: `UNKNOWN`/`UNSUPPORTED` issues carry stable intake IDs (`IndexedIssue`, attached at the semantic intake boundary) for ESM evidence basis; they remain outside traceability's error surface and finding surface as stated above.
+
 Two further traceability-specific failure modes, both
 `ReconError('InvalidReconState')`:
 

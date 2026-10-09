@@ -5,6 +5,8 @@ import {
   contentId,
   dependencyId,
   functionId,
+  issueContentId,
+  normalizeIssueFile,
   projectId,
   roleId,
   stateVariableId,
@@ -145,6 +147,66 @@ describe('contentId', () => {
 
   it('produces stable-length hex digests', () => {
     expect(contentId('fact', { a: 1 })).toMatch(/^fact:[0-9a-f]{16}$/);
+  });
+});
+
+describe('normalizeIssueFile', () => {
+  it('normalizes separators and dot segments while preserving case', () => {
+    expect(normalizeIssueFile('src\\Vault.sol')).toBe('src/Vault.sol');
+    expect(normalizeIssueFile('./src/Vault.sol')).toBe('src/Vault.sol');
+    expect(normalizeIssueFile('src//Vault.sol')).toBe('src/Vault.sol');
+    expect(normalizeIssueFile('  src/Vault.sol  ')).toBe('src/Vault.sol');
+    expect(normalizeIssueFile('src/A.sol')).not.toBe('src/a.sol');
+  });
+
+  it('rejects absolute POSIX paths', () => {
+    expect(() => normalizeIssueFile('/abs/Vault.sol')).toThrowError(
+      expect.objectContaining({ code: 'InvalidIdentifier' }),
+    );
+  });
+
+  it('rejects UNC, extended UNC, and drive-letter paths', () => {
+    for (const absolute of ['//server/share/Vault.sol', '\\\\server\\share\\Vault.sol', 'C:/repo/Vault.sol', 'C:Vault.sol']) {
+      expect(() => normalizeIssueFile(absolute)).toThrowError(
+        expect.objectContaining({ code: 'InvalidIdentifier' }),
+      );
+    }
+  });
+});
+
+describe('issueContentId', () => {
+  const base = {
+    severity: 'UNSUPPORTED',
+    code: 'unsupported_assembly',
+    file: 'src/Vault.sol',
+    line_start: 13,
+    line_end: 13,
+  } as const;
+
+  it('mints stable issue-prefixed ids', () => {
+    const first = issueContentId({ ...base });
+    expect(first).toMatch(/^issue:[0-9a-f]{16}$/);
+    expect(issueContentId({ ...base })).toBe(first);
+  });
+
+  it('ignores message and count variations', () => {
+    const plain = issueContentId({ ...base });
+    const withMeta = { ...base, message: 'something happened', count: 3 };
+    expect(issueContentId(withMeta)).toBe(plain);
+  });
+
+  it('differs across code, span, severity, and file', () => {
+    const plain = issueContentId({ ...base });
+    expect(issueContentId({ ...base, code: 'unsupported_try_catch' })).not.toBe(plain);
+    expect(issueContentId({ ...base, line_start: 14, line_end: 14 })).not.toBe(plain);
+    expect(issueContentId({ ...base, severity: 'UNKNOWN' })).not.toBe(plain);
+    expect(issueContentId({ ...base, file: 'src/Other.sol' })).not.toBe(plain);
+  });
+
+  it('mints file-less issues deterministically', () => {
+    const first = issueContentId({ severity: 'RECOVERABLE', code: 'git_unavailable' });
+    expect(first).toMatch(/^issue:[0-9a-f]{16}$/);
+    expect(issueContentId({ severity: 'RECOVERABLE', code: 'git_unavailable' })).toBe(first);
   });
 });
 

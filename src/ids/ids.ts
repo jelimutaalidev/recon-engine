@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { stableStringify } from '../util/canonical.js';
+import { ReconError } from '../errors/errors.js';
 import { normalizeAddress, normalizeChainId, normalizeName, normalizeSourceFile } from './normalize.js';
 
 export type ContentIdPrefix =
@@ -10,7 +11,8 @@ export type ContentIdPrefix =
   | 'evidence'
   | 'rel'
   | 'prov'
-  | 'run';
+  | 'run'
+  | 'issue';
 
 export interface AddressIdentity {
   chainId?: string | undefined;
@@ -55,6 +57,39 @@ export function dependencyId(identity: AddressIdentity): string {
 
 export function provenanceId(payload: unknown): string {
   return contentId('prov', payload);
+}
+
+export interface IssueIdentityInput {
+  severity: string;
+  code: string;
+  file?: string | undefined;
+  line_start?: number | undefined;
+  line_end?: number | undefined;
+}
+
+const ABSOLUTE_PATH_PATTERN = /^(?:\/|[A-Za-z]:)/;
+
+export function normalizeIssueFile(path: string): string {
+  const posix = path.trim().replace(/\\/g, '/');
+  const segments = posix.split('/').filter((segment) => segment.length > 0 && segment !== '.');
+  const normalized = segments.join('/');
+  if (ABSOLUTE_PATH_PATTERN.test(posix) || posix.startsWith('//')) {
+    throw new ReconError('InvalidIdentifier', 'issue file path must be project-relative', {
+      path,
+    });
+  }
+  return normalized;
+}
+
+export function issueContentId(input: IssueIdentityInput): string {
+  const payload: Record<string, string | number> = {
+    severity: input.severity,
+    code: input.code,
+  };
+  if (input.file !== undefined) payload['file'] = normalizeIssueFile(input.file);
+  if (input.line_start !== undefined) payload['line_start'] = input.line_start;
+  if (input.line_end !== undefined) payload['line_end'] = input.line_end;
+  return contentId('issue', payload);
 }
 
 export function contentId(prefix: ContentIdPrefix, payload: unknown): string {
