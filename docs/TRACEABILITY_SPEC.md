@@ -659,8 +659,6 @@ If this identity scheme is implemented, the canonicalization MUST be specified a
 
 Do not use timestamps or random values.
 
-Issue intake identity: `ReconIssue` records receive stable deterministic IDs (`issue:` prefix, `src/ids/ids.ts`) at the semantic intake boundary (`buildEvidenceIndex`, `src/semantic/evidence.ts`), derived from `{severity, code, normalized file?, line_start?, line_end?}` only — never `message`/`count`, never random or wall-clock values. This satisfies the stable-ID and no-random-ID rules above; ESM cites these IDs as evidence basis without minting substitute provenance.
-
 ---
 
 19. Persistence

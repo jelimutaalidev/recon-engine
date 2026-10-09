@@ -6,7 +6,6 @@ import type { Provenance } from '../epistemic/provenance.js';
 import type { ReconIssue } from '../recon/issues.js';
 import type { ReconState } from '../recon-state/schema.js';
 import type { Relationship } from '../relationships/relationship.js';
-import { issueContentId } from '../ids/ids.js';
 import { buildGraphIndex, type GraphIndex } from '../relationships/graph.js';
 import type { ScopeReport } from '../scope/model.js';
 import { computeOutputIdentity } from '../traceability/identities.js';
@@ -25,8 +24,7 @@ export interface EvidenceIndex {
   functionsById: Map<string, SolidityFunction>;
   contractsById: Map<string, Contract>;
   stateVariablesById: Map<string, StateVariable>;
-  issuesByFile: Map<string, IndexedIssue[]>;
-  issuesById: Map<string, IndexedIssue[]>;
+  issuesByFile: Map<string, ReconIssue[]>;
   graph: GraphIndex;
   provenanceById: Map<string, Provenance>;
   stateHash: string;
@@ -42,48 +40,18 @@ function indexById<T extends { id: string }>(items: readonly T[]): Map<string, T
   return index;
 }
 
-export type IndexedIssue = ReconIssue & { id: string };
-
-function indexIssue(issue: ReconIssue): IndexedIssue {
-  return {
-    ...issue,
-    id: issueContentId({
-      severity: issue.severity,
-      code: issue.code,
-      ...(issue.file !== undefined ? { file: issue.file } : {}),
-      ...(issue.line_start !== undefined ? { line_start: issue.line_start } : {}),
-      ...(issue.line_end !== undefined ? { line_end: issue.line_end } : {}),
-    }),
-  };
-}
-
-function groupIssuesByFile(issues: readonly ReconIssue[]): Map<string, IndexedIssue[]> {
-  const grouped = new Map<string, IndexedIssue[]>();
+function groupIssuesByFile(issues: readonly ReconIssue[]): Map<string, ReconIssue[]> {
+  const grouped = new Map<string, ReconIssue[]>();
   for (const issue of issues) {
     const key = issue.file ?? '';
     const bucket = grouped.get(key);
     if (bucket === undefined) {
-      grouped.set(key, [indexIssue(issue)]);
+      grouped.set(key, [issue]);
     } else {
-      bucket.push(indexIssue(issue));
+      bucket.push(issue);
     }
   }
   return grouped;
-}
-
-function indexIssuesById(grouped: ReadonlyMap<string, IndexedIssue[]>): Map<string, IndexedIssue[]> {
-  const byId = new Map<string, IndexedIssue[]>();
-  for (const bucket of grouped.values()) {
-    for (const issue of bucket) {
-      const matches = byId.get(issue.id);
-      if (matches === undefined) {
-        byId.set(issue.id, [issue]);
-      } else {
-        matches.push(issue);
-      }
-    }
-  }
-  return byId;
 }
 
 export function buildEvidenceIndex(input: SemanticInput): EvidenceIndex {
@@ -93,15 +61,13 @@ export function buildEvidenceIndex(input: SemanticInput): EvidenceIndex {
     (candidate) => candidate.output_identity?.output_hash === stateHash,
   );
 
-  const issuesByFile = groupIssuesByFile(input.issues);
   const index: EvidenceIndex = {
     factsById: indexById(state.facts),
     relationshipsById: indexById(state.relationships),
     functionsById: indexById(state.functions),
     contractsById: indexById(state.contracts),
     stateVariablesById: indexById(state.state_variables),
-    issuesByFile,
-    issuesById: indexIssuesById(issuesByFile),
+    issuesByFile: groupIssuesByFile(input.issues),
     graph: buildGraphIndex(state.relationships),
     provenanceById: indexById(state.provenance),
     stateHash,
