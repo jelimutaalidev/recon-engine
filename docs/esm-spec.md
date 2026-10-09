@@ -683,6 +683,140 @@ union, UNKNOWN (capability unproven); an unknown-target outward call
 without an anchorable entry → UNKNOWN; a hook-interface case →
 capability union WITH `reentry-capable` status + UNKNOWN order.
 
+## 12.8 Transient lifecycle of ComposedSummary (normative)
+
+**Ruling (normative).** A ComposedSummary is a deterministic, transient
+pipeline output. It is NOT an ESM record (§2: an ESM record is a typed
+record inside the artifact; §2 Composition "never means a record"): it
+has no content id, is not a member of any §14 array, is not counted in
+§14 counts, and is not hashed into `esem_hash`.
+
+1. **Shared derivation pass (normative).** `deriveEsm(index):
+   EsmArtifact` is UNCHANGED. One internal helper derives, in a single
+   pass over the code-unit-sorted function ids through the single
+   `composeFunction` implementation, the primitives, the per-function
+   summaries, and the composed unknowns. `deriveEsm` and the separate
+   pure function `deriveCompositions(index)` (returning `{ summaries,
+   unknowns }`) are thin projections of that helper's result: no
+   second traversal, no duplicate derivation, no second implementation
+   (the §19.3 "MUST NOT re-traverse" constraint binds any consumer to
+   the single implementation). No cache, memoization, or shared mutable
+   state is introduced: each public call recomputes purely, and the
+   determinism guarantee is scoped to content-identical indexes (same
+   record contents; Map insertion order irrelevant; mutated indexes
+   outside the guarantee). The transient `unknowns` MUST equal, by id
+   set, the composed unknowns merged into the artifact for the same
+   index — the observable proof both projections fed from one pass.
+2. **Artifact-invariance (normative).** For any content-identical
+   index: (a) **determinism** — `serializeEsm(deriveEsm(index))` is
+   byte-identical across repeated calls in one process (full serialized
+   `EsmArtifact` bytes — including `counts` and `esem_hash` — not the
+   hash alone), and `computeEsmHash` recomputes to the attached
+   `esem_hash`; (b) **non-interference** — `serializeEsm(deriveEsm(index))`
+   is byte-identical whether or not `deriveCompositions(index)` is
+   additionally invoked in-process, for exactly these call orderings:
+   `[deriveEsm, deriveEsm]`, `[deriveCompositions, deriveEsm]`,
+   `[deriveEsm, deriveCompositions, deriveEsm]`,
+   `[deriveCompositions, deriveCompositions]` ("all interleavings" in
+   this section means these four orderings only — not an exhaustive
+   proof over unlisted sequences); (c) **equivalence** — the transient
+   `unknowns` id-set equals the artifact's composed-unknowns id-set
+   for the same index. The pre-/post-API-addition comparison is
+   implemented by these in-tree surrogates (the pre-change code is gone
+   post-merge): the entire pre-existing `deriveEsm` suite stays green
+   unmodified (behavior preserved) plus (a)–(c). Structural,
+   review-gated rather than test-provable: (d) `deriveEsm` and
+   `deriveCompositions` are thin projections of one shared internal
+   helper — single per-function loop, no second traversal, no duplicate
+   derivation; (e) `deriveEsm`'s signature is textually unchanged,
+   envelope/counts/hash/id rules untouched, and no cache, memoization,
+   or shared mutable state is introduced (no module-level mutable
+   bindings, no index mutation).
+3. **Entry ordering preserves §12.1 semantics (normative).** Within
+   each per-function partition, that function's own modifier gates
+   come first in authored modifier order (§12.1 modifier-wrap: "gate
+   conditions prepend"; §6.10 conjunctions "never simplified, never
+   solved"). The remaining own entries use the existing canonical
+   comparator (kind, then ref, code-unit). Composed unions preserve
+   first-seen order (caller before callee, derived before base). No
+   global re-sort of summary entries is performed; §12.1 prepend
+   semantics are not overridden. Repeated derivation is byte-identical.
+   Reordering guarantee (narrow): permuting the insertion order of
+   index maps (`functionsById`, `relationshipsById`, `factsById`,
+   `contractsById`, `stateVariablesById`, `provenanceById`,
+   `issuesByFile` buckets) and of the primitive parts arrays yields
+   identical summaries, unknowns, artifact, counts, and hash — because
+   every such collection is re-sorted (code-unit) before
+   order-sensitive use. Expressly excluded from reordering: authored
+   intra-record orders that are semantic content (`fn.modifiers`
+   order, `provenance` record arrays as byte-equal evidence, opaque
+   evidence strings), which MUST be preserved byte-equal; and derived
+   positional arrays (`chain`, `callKinds`, `hops`, lineage sequence),
+   which follow the specified traversal order. A reversed-insertion
+   test MUST NOT shuffle, sort, or normalize these excluded orders.
+4. **Summary ordering and cardinality (normative).** Exactly one
+   summary per `functionsById` key, including empty-partition
+   functions, sorted by `(owner.function, owner.contract)`
+   code-units. Summary contexts are copies of existing §8 records
+   sorted by id code-units. Transient unknowns are id-sorted,
+   matching post-finalize artifact unknown order.
+5. **References without synthetic ids (normative).** Every entry `ref`
+   MUST resolve to a primitive record id of the same run (equal to the
+   corresponding §14 array member id); every summary context MUST be an
+   existing §8 record (id in the run's contexts); every lineage `edge`
+   / `entry` MUST be a real intake id or an operator-bound marker
+   (modifier name, base ref, site id) per the §12.1 operator tuples.
+   Traversal-internal visited keys (e.g. `resolveContextId` fallbacks)
+   MUST NEVER appear in outputs. Basis ≥1 and no-synthesized-
+   provenance (§16) apply unchanged.
+6. **Lineage flags are opaque diagnostics (normative).** Lineage
+   preserves traversal order with first-seen dedupe. Flag values and
+   marker shapes beyond the §12.1 operator tuples and the
+   bound-hit/cyclic markers are opaque diagnostics: no closed flag
+   vocabulary is invented here, emitted flags are not changed, and
+   consumers MUST NOT interpret them. Auditability rests on the
+   operator sequence, owner tags, and entry references.
+7. **Bounded auditability (normative).** Transient output supports:
+   input/reference traceability (entry refs → primitive ids),
+   operator sequence (lineage order), and ownership partitioning
+   (owner tags per §12.7). It does NOT provide per-step
+   input-consumption reconstruction (lineage records carry no
+   per-step input linkage) or integrity binding of transient
+   summaries (outside `esem_hash`); both remain deferred, and
+   recomputation-based verification is deferred together with
+   consumption.
+8. **Consumers: NONE in production today (explicit deferral,**
+   **normative).** Precedent: §19.2 Paths ("no consumer today —
+   explicit"). §12.5 is direction plus future-consumption constraint
+   (outputs stay impact/finding/classification-free; SSEM MUST NOT
+   re-traverse per §19.3). **§19.2 map UNCHANGED.** SSEM wiring,
+   ladder `based_on`, SINV, UNKNOWN roll-up, temporal scope, and
+   source-reader policy remain STOP (§§18, 19.5, 21.1–21.2).
+9. **§12.4 note (interpretive, normative as stated).** Summaries
+   satisfy the determinism half (byte-identical, sorted as above) and
+   are keyed by owner tuple; no summary content-ids are minted (no id
+   family for summaries exists in §14/§21.6). "Content-addressed like
+   records" applies to composition outputs that are records (paths,
+   unknowns). Fidelity echo and degradation notes for composition
+   outputs are carried by the artifact as today (artifact
+   `inputs.fidelity` plus unknowns); summaries gain no separate
+   fidelity/degradation fields — deferred. **§§14/15/16/18
+   UNCHANGED** (eight arrays, counts keys, `seme:` family, envelope
+   exclusivity, hash exclusions, provenance rules).
+
+*Example (non-normative; normative rules govern, orders as stated).*
+A→B: summaries sorted by owner (`(A,Hub)` before `(B,Hub)`); the
+A-summary entries open with A's modifier gates in authored order
+(`m1`, `m2`), then remaining entries in (kind, ref) order; contexts
+are serialized by id code-units (chains `[A]`, `[A,B]`, `[B]` shown
+for illustration — actual order is id order, not chain order);
+lineage shows traversal order with flag strings carried opaquely.
+
+*Deferred (not decided).* Ever enveloping summaries; an edge-link
+field on contexts; per-step input linkage; integrity binding;
+exact new-function name (`deriveCompositions` proposed, human
+confirms).
+
 ## 13. Primitive P9 — SemanticUnknown
 
 **13.1 Formal definition.** First-class unknown record:
