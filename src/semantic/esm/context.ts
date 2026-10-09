@@ -44,6 +44,7 @@ export const ExecutionContextSchema = z
     entry: z.string().min(1),
     chain: z.array(z.string().min(1)).min(1),
     callKinds: z.array(z.string().min(1)),
+    basis: z.array(z.string().min(1)).min(1),
     gates: z.array(z.string().min(1)),
     unknown: z.strictObject({
       actor: z.literal(UNKNOWN_LITERAL),
@@ -131,6 +132,7 @@ export function deriveContexts(index: EvidenceIndex): {
   ): void => {
     const id = esmContentId(CONTEXT_ID_PREFIX, { entry, chain, gates });
     if (byId.has(id)) return;
+    const basis = sortedUnique([entry, ...chain, ...hops]);
     byId.set(
       id,
       ExecutionContextSchema.parse({
@@ -138,6 +140,7 @@ export function deriveContexts(index: EvidenceIndex): {
         entry,
         chain,
         callKinds: kinds,
+        basis,
         gates,
         unknown: {
           actor: UNKNOWN_LITERAL,

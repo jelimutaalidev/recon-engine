@@ -254,6 +254,47 @@ describe('deriveContexts', () => {
       }),
     );
   });
+  it('context basis covers entry, chain and traversed edge ids sorted unique', () => {
+    const s = miniState();
+    const hub = s.contract('Hub');
+    const mid = s.contract('Mid');
+    const leaf = s.contract('Leaf');
+    const start = s.fn(hub, 'start');
+    const middle = s.fn(mid, 'middle', { visibility: 'internal' as Visibility });
+    const finish = s.fn(leaf, 'finish', { visibility: 'internal' as Visibility });
+    const first = s.calls(start.id, middle.id, 'internal');
+    const second = s.calls(middle.id, finish.id, 'external');
+    const marker = s.marker(finish.id, 'CALLS', 'unresolved-lowlevel-call');
+    const { contexts } = deriveContexts(s.buildIndex());
+
+    const self = byEntry(contexts, start.id).find((entry) => entry.chain.length === 1)!;
+    expect(self.basis).toEqual([start.id]);
+
+    const deep = contexts.find((entry) => entry.chain.at(-1) === finish.id)!;
+    const expected = [start.id, middle.id, finish.id, first.id, second.id].sort();
+    expect(deep.basis).toEqual(expected);
+    expect(deep.basis).toContain(start.id);
+    expect(deep.basis).toContain(first.id);
+    expect(deep.basis).toContain(second.id);
+    expect([...deep.basis].sort()).toEqual(deep.basis);
+    expect(new Set(deep.basis).size).toBe(deep.basis.length);
+
+    const truncated = contexts.find((entry) => entry.chain.at(-1) === marker.id)!;
+    expect(truncated.basis).toContain(start.id);
+    expect(truncated.basis).toContain(marker.id);
+    expect(truncated.basis).toContain(first.id);
+    expect(truncated.basis).toContain(second.id);
+
+    for (const context of contexts) {
+      expect(context.basis.length).toBeGreaterThanOrEqual(1);
+      expect(ExecutionContextSchema.safeParse(context).success).toBe(true);
+    }
+    expect(
+      ExecutionContextSchema.safeParse({ ...deep, basis: [] }).success,
+    ).toBe(false);
+    const { basis: _dropped, ...withoutBasis } = deep;
+    expect(ExecutionContextSchema.safeParse(withoutBasis).success).toBe(false);
+  });
   it('resolved delegatecall hop records an explicit shift marker plus storage-subject unknown', () => {
     const s = miniState();
     const hub = s.contract('Hub');
