@@ -4,7 +4,7 @@ import type { EvidenceIndex } from '../evidence.js';
 import type { Fact } from '../../epistemic/fact.js';
 import type { Relationship } from '../../relationships/relationship.js';
 import { esmContentId, type EsmIdPrefix } from './ids.js';
-import { makeEsmUnknown, type UnknownReason, type UnknownRecord } from './unknown.js';
+import { createUnknownCollector, type UnknownRecord } from './unknown.js';
 
 const CONTEXT_ID_PREFIX: EsmIdPrefix = 'seme:';
 
@@ -107,15 +107,10 @@ export function deriveContexts(index: EvidenceIndex): {
   );
 
   const byId = new Map<string, ExecutionContext>();
-  const unknowns: UnknownRecord[] = [];
-  const seenUnknowns = new Set<string>();
+  const collector = createUnknownCollector();
+  const unknowns = collector.unknowns;
 
-  const pushUnknown = (scope: string, reason: UnknownReason, basis: string[]): void => {
-    const record = makeEsmUnknown(scope, reason, basis);
-    if (seenUnknowns.has(record.id)) return;
-    seenUnknowns.add(record.id);
-    unknowns.push(record);
-  };
+  const pushUnknown = collector.pushUnknown.bind(collector);
 
   const gatesOf = (functionId: string): string[] => {
     const fn = index.functionsById.get(functionId);

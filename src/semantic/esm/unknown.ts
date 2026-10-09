@@ -74,3 +74,31 @@ export function makeEsmUnknown(
   }
   return parsed.data;
 }
+
+export interface UnknownCollector {
+  readonly unknowns: UnknownRecord[];
+  pushUnknown(
+    scope: string,
+    reason: UnknownReason,
+    basis: string[],
+    provenance?: Provenance[],
+  ): void;
+  pushRecord(record: UnknownRecord): void;
+}
+
+export function createUnknownCollector(): UnknownCollector {
+  const unknowns: UnknownRecord[] = [];
+  const seen = new Set<string>();
+  const pushRecord = (record: UnknownRecord): void => {
+    if (seen.has(record.id)) return;
+    seen.add(record.id);
+    unknowns.push(record);
+  };
+  return {
+    unknowns,
+    pushUnknown(scope, reason, basis, provenance) {
+      pushRecord(makeEsmUnknown(scope, reason, basis, provenance));
+    },
+    pushRecord,
+  };
+}

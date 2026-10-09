@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { compareCodeUnits } from '../../util/canonical.js';
 import type { EvidenceIndex } from '../evidence.js';
 import { esmContentId, type EsmIdPrefix } from './ids.js';
-import { makeEsmUnknown, type UnknownRecord } from './unknown.js';
+import { createUnknownCollector, makeEsmUnknown, type UnknownRecord } from './unknown.js';
 
 const ACCESS_ID_PREFIX: EsmIdPrefix = 'seme:';
 
@@ -95,8 +95,8 @@ export function deriveAccesses(index: EvidenceIndex): {
   }
 
   const accesses: StateAccess[] = [];
-  const unknowns: UnknownRecord[] = [];
-  const seenUnknowns = new Set<string>();
+  const collector = createUnknownCollector();
+  const unknowns = collector.unknowns;
 
   for (const group of groups.values()) {
     const op: StateAccess['op'] =
@@ -122,15 +122,13 @@ export function deriveAccesses(index: EvidenceIndex): {
       }),
     );
     if (group.location === UNKNOWN_LOCATION) {
-      const unknown = makeEsmUnknown(
-        UNKNOWN_LOCATION_SCOPE,
-        'location-unidentified',
-        [...group.edgeIds].sort(compareCodeUnits),
+      collector.pushRecord(
+        makeEsmUnknown(
+          UNKNOWN_LOCATION_SCOPE,
+          'location-unidentified',
+          [...group.edgeIds].sort(compareCodeUnits),
+        ),
       );
-      if (!seenUnknowns.has(unknown.id)) {
-        seenUnknowns.add(unknown.id);
-        unknowns.push(unknown);
-      }
     }
   }
 

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { compareCodeUnits } from '../../util/canonical.js';
 import type { EvidenceIndex } from '../evidence.js';
 import { esmContentId, type EsmIdPrefix } from './ids.js';
-import { makeEsmUnknown, type UnknownRecord } from './unknown.js';
+import { createUnknownCollector, makeEsmUnknown, type UnknownRecord } from './unknown.js';
 
 const BOUNDARY_ID_PREFIX: EsmIdPrefix = 'seme:';
 
@@ -41,15 +41,9 @@ export function deriveBoundaries(index: EvidenceIndex): {
   unknowns: UnknownRecord[];
 } {
   const boundaries: ExternalResult[] = [];
-  const unknowns: UnknownRecord[] = [];
-  const seenUnknowns = new Set<string>();
-
-  const pushUnknown = (unknown: UnknownRecord): void => {
-    if (!seenUnknowns.has(unknown.id)) {
-      seenUnknowns.add(unknown.id);
-      unknowns.push(unknown);
-    }
-  };
+  const collector = createUnknownCollector();
+  const unknowns = collector.unknowns;
+  const pushUnknown = collector.pushRecord.bind(collector);
 
   const pushReturnUnknowns = (siteId: string): void => {
     pushUnknown(makeEsmUnknown(RETURN_LINK_SCOPE, 'no-return-linkage', [siteId]));

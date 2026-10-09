@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { compareCodeUnits } from '../../util/canonical.js';
 import type { EvidenceIndex } from '../evidence.js';
 import { esmContentId, type EsmIdPrefix } from './ids.js';
-import { makeEsmUnknown, type UnknownRecord } from './unknown.js';
+import { createUnknownCollector, makeEsmUnknown, type UnknownRecord } from './unknown.js';
 import type { StateAccess } from './access.js';
 import type { Condition } from './conditions.js';
 import type { ExternalResult } from './external.js';
@@ -81,8 +81,8 @@ export function deriveInfluence(
   parts: InfluenceParts,
 ): { influence: InfluenceEdge[]; unknowns: UnknownRecord[] } {
   const byId = new Map<string, InfluenceEdge>();
-  const unknowns: UnknownRecord[] = [];
-  const seenUnknowns = new Set<string>();
+  const collector = createUnknownCollector();
+  const unknowns = collector.unknowns;
 
   const pushEdge = (
     kind: InfluenceEdge['kind'],
@@ -109,11 +109,7 @@ export function deriveInfluence(
     );
   };
 
-  const pushUnknown = (unknown: UnknownRecord): void => {
-    if (seenUnknowns.has(unknown.id)) return;
-    seenUnknowns.add(unknown.id);
-    unknowns.push(unknown);
-  };
+  const pushUnknown = collector.pushRecord.bind(collector);
 
   const knownAccesses = parts.accesses
     .filter((access) => access.location !== UNKNOWN_LOCATION)

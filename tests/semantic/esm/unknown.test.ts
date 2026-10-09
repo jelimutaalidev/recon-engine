@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { esmContentId } from '../../../src/semantic/esm/ids.js';
-import { ESM_UNKNOWN_REASONS, makeEsmUnknown } from '../../../src/semantic/esm/unknown.js';
+import { ESM_UNKNOWN_REASONS, createUnknownCollector, makeEsmUnknown } from '../../../src/semantic/esm/unknown.js';
 
 describe('makeEsmUnknown', () => {
   it('throws on empty basis', () => {
@@ -27,8 +27,7 @@ describe('makeEsmUnknown', () => {
     ).toThrow();
   });
 
-  it('freezes the exact §13.2 reason strings', () => {
-    expect([...ESM_UNKNOWN_REASONS]).toEqual([
+  it('freezes the exact §13.2 reason strings', () => {    expect([...ESM_UNKNOWN_REASONS]).toEqual([
       'no_evidence',
       'unresolved_call',
       'unsupported_assembly',
@@ -48,5 +47,29 @@ describe('makeEsmUnknown', () => {
       'bound-hit',
       'cyclic',
     ]);
+  });
+});
+
+describe('createUnknownCollector', () => {
+  it('dedupes identical unknowns by content id, preserving first-seen order', () => {
+    const collector = createUnknownCollector();
+    collector.pushUnknown('scope-a', 'no_evidence', ['x']);
+    collector.pushUnknown('scope-a', 'no_evidence', ['x']);
+    collector.pushRecord(makeEsmUnknown('scope-a', 'no_evidence', ['x']));
+    expect(collector.unknowns).toHaveLength(1);
+    expect(collector.unknowns[0]?.id).toBe(
+      makeEsmUnknown('scope-a', 'no_evidence', ['x']).id,
+    );
+  });
+
+  it('keeps distinct unknowns and enforces basis >= 1 via pushUnknown', () => {
+    const collector = createUnknownCollector();
+    collector.pushUnknown('scope-a', 'no_evidence', ['x']);
+    collector.pushUnknown('scope-b', 'no_evidence', ['x']);
+    expect(collector.unknowns.map((record) => record.scope)).toEqual([
+      'scope-a',
+      'scope-b',
+    ]);
+    expect(() => collector.pushUnknown('scope-c', 'no_evidence', [])).toThrow();
   });
 });

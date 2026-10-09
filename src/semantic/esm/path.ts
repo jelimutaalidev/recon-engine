@@ -6,7 +6,7 @@ import type { Relationship } from '../../relationships/relationship.js';
 import type { Condition } from './conditions.js';
 import type { InfluenceEdge } from './influence.js';
 import { esmContentId, type EsmIdPrefix } from './ids.js';
-import { makeEsmUnknown, type UnknownReason, type UnknownRecord } from './unknown.js';
+import { createUnknownCollector, type UnknownRecord } from './unknown.js';
 
 const PATH_ID_PREFIX: EsmIdPrefix = 'seme:';
 
@@ -66,15 +66,10 @@ export function derivePaths(
   const { conditions } = parts;
 
   const byId = new Map<string, SemPath>();
-  const unknowns: UnknownRecord[] = [];
-  const seenUnknowns = new Set<string>();
+  const collector = createUnknownCollector();
+  const unknowns = collector.unknowns;
 
-  const pushUnknown = (scope: string, reason: UnknownReason, basis: string[]): void => {
-    const record = makeEsmUnknown(scope, reason, basis);
-    if (seenUnknowns.has(record.id)) return;
-    seenUnknowns.add(record.id);
-    unknowns.push(record);
-  };
+  const pushUnknown = collector.pushUnknown.bind(collector);
 
   const gatesByFunction = new Map<string, string[]>();
   const orderedConditions = [...conditions].sort((a, b) => compareCodeUnits(a.id, b.id));

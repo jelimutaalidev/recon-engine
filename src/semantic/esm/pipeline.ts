@@ -10,6 +10,7 @@ import { derivePaths } from './path.js';
 import { composeFunction, type ComposedSummary } from './compose.js';
 import { finalizeEsm, type EsmArtifact, type EsmDraft } from './envelope.js';
 import type { UnknownRecord } from './unknown.js';
+import { createUnknownCollector } from './unknown.js';
 
 interface EsmDerivation {
   accesses: ReturnType<typeof deriveAccesses>['accesses'];
@@ -54,15 +55,13 @@ function deriveEsmDerivation(index: EvidenceIndex): EsmDerivation {
   };
   const functionIds = [...index.functionsById.keys()].sort(compareCodeUnits);
   const summaries: ComposedSummary[] = [];
-  const seenUnknowns = new Set<string>();
-  const composedUnknowns: UnknownRecord[] = [];
+  const collector = createUnknownCollector();
+  const composedUnknowns = collector.unknowns;
   for (const functionId of functionIds) {
     const composed = composeFunction(index, functionId, composeParts);
     summaries.push(composed.summary);
     for (const unknown of composed.unknowns) {
-      if (seenUnknowns.has(unknown.id)) continue;
-      seenUnknowns.add(unknown.id);
-      composedUnknowns.push(unknown);
+      collector.pushRecord(unknown);
     }
   }
   summaries.sort(
