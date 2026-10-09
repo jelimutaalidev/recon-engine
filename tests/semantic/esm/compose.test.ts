@@ -262,6 +262,23 @@ describe('modifierWrap', () => {
     expect(summary.entries[0]?.ref).toBe(m1?.id);
     expect(summary.entries[1]?.ref).toBe(m2?.id);
   });
+
+  it('identical operator applications on caller and callee stay distinguishable in lineage', () => {
+    const s = miniState();
+    const hub = s.contract('Hub');
+    const a = s.fn(hub, 'a', { modifiers: ['onlyOwner'] });
+    const b = s.fn(hub, 'b', { modifiers: ['onlyOwner'] });
+    s.calls(a.id, b.id, 'internal');
+    const index = s.buildIndex();
+    const parts = deriveAll(index);
+    const { summary } = composeFunction(index, a.id, parts);
+
+    const wraps = summary.lineage.filter(
+      (record) => record.operator === 'modifier-wrap' && record.edge === 'onlyOwner',
+    );
+    expect(wraps.length).toBe(2);
+    expect(wraps.map((record) => record.owner).sort()).toEqual([a.id, b.id].sort());
+  });
 });
 
 describe('inheritMerge', () => {
@@ -296,6 +313,29 @@ describe('inheritMerge', () => {
     for (const record of summary.entries) {
       expect(record.contract).not.toBe('contract:GhostBase');
     }
+  });
+
+  it('composeFunction merges a known base with inherit-merge lineage on the base contract', () => {
+    const s = miniState();
+    const base = s.contract('Base');
+    const derived = s.contract('Derived');
+    const m = s.fn(base, 'm', { modifiers: ['onlyOwner'] });
+    const d = s.fn(derived, 'd');
+    s.base(derived.id, base.id);
+    const index = s.buildIndex();
+    const parts = deriveAll(index);
+    const { summary, unknowns } = composeFunction(index, d.id, parts);
+
+    const dPart = summary.entries.filter((record) => record.function === d.id);
+    expect(dPart.length).toBeGreaterThan(0);
+    const mPart = summary.entries.filter((record) => record.function === m.id);
+    expect(mPart.length).toBeGreaterThan(0);
+    for (const record of mPart) expect(record.contract).toBe(base.id);
+    const merge = summary.lineage.find((record) => record.operator === 'inherit-merge');
+    expect(merge?.edge).toBe(base.id);
+    expect(merge?.flags).toEqual([]);
+    expect(merge?.owner).toBe(d.id);
+    expect(unknowns).toEqual([]);
   });
 });
 
@@ -357,17 +397,22 @@ describe('callbackReentry', () => {
     expect(result.unknowns[0]?.basis).toContain('function:B');
   });
 
-  it('WITHOUT an exposed entry yields UNKNOWN with no union', () => {
+  it('WITHOUT an exposed entry yields UNKNOWN, preserves the caller, and never demotes status', () => {
     const caller = frag([entry('condition', 'seme:acond', 'function:A', 'contract:H')]);
+    caller.status = 'reentry-capable';
     const result = callbackReentry(caller, undefined, 'rel:out1');
 
-    expect(result.entries).toEqual([]);
+    expect(result.entries).toEqual(caller.entries);
+    expect(result.entries.length).toBeGreaterThan(0);
+    expect(result.status).toBe('reentry-capable');
     expect(result.unknowns.length).toBe(1);
     expect(result.unknowns[0]?.reason).toBe('no_evidence');
     expect(result.unknowns[0]?.basis).toEqual(['rel:out1']);
     expect(result.lineage.length).toBe(1);
     expect(result.lineage[0]?.operator).toBe('callback-reentry');
-    expect(result.lineage.every((record) => record.status !== 'reentry-capable')).toBe(true);
+    expect(result.lineage[0]?.status).toBe('reentry-capable');
+    expect(result.lineage[0]?.flags).toEqual(['no-entry']);
+    expect('entry' in (result.lineage[0] as object)).toBe(false);
   });
 
   it('composeFunction unions an exposed entry for an unresolved outward call', () => {
@@ -414,6 +459,8 @@ describe('callbackReentry', () => {
     expect(
       summary.lineage.some((record) => record.status === 'reentry-capable'),
     ).toBe(false);
+    const aPart = summary.entries.filter((record) => record.function === a.id);
+    expect(aPart.length).toBeGreaterThan(0);
     for (const record of summary.entries) expect(record.function).toBe(a.id);
   });
 

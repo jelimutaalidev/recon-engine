@@ -44,6 +44,7 @@ export const LineageEntrySchema = z.strictObject({
   operator: CompositionOperatorSchema,
   edge: z.string().min(1).optional(),
   entry: z.string().min(1).optional(),
+  owner: z.string().min(1).optional(),
   status: CompositionStatusSchema,
   flags: z.array(z.string().min(1)),
 });
@@ -228,13 +229,13 @@ export function callbackReentry(
 ): CompositionFragment {
   if (entry === undefined || entryId === undefined) {
     return {
-      entries: [],
+      entries: [...caller.entries],
       lineage: [
         ...caller.lineage,
         {
           operator: 'callback-reentry' as const,
           edge: outwardCallId,
-          status: 'direct' as const,
+          status: caller.status,
           flags: ['no-entry'],
         },
       ],
@@ -242,7 +243,7 @@ export function callbackReentry(
         ...caller.unknowns,
         makeEsmUnknown('composition-reentry', 'no_evidence', [outwardCallId]),
       ]),
-      status: 'direct',
+      status: caller.status,
     };
   }
   return {
@@ -495,7 +496,11 @@ function composeFunctionInner(
     }
     return {
       entries: fragment.entries.map((record) => ({ ...record })),
-      lineage: fragment.lineage.map((record) => ({ ...record, flags: [...record.flags] })),
+      lineage: fragment.lineage.map((record) => ({
+        ...record,
+        flags: [...record.flags],
+        owner: record.owner ?? fn,
+      })),
       unknowns: [...fragment.unknowns],
       status: fragment.status,
     };
@@ -770,6 +775,9 @@ function composeFunctionInner(
           };
         }
       }
+    }
+    for (const record of acc.lineage) {
+      if (record.owner === undefined) record.owner = fn;
     }
     return acc;
   };
